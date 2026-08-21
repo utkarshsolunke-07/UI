@@ -61,7 +61,7 @@ export default function ImageStudio({
       {/* ============================================================
          TOP SECTION: TUNING CONTROLS, FILE INFO & METRICS
          ============================================================ */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px 300px', gap: '1rem' }}>
+      <div className="studio-grid-image">
 
         {/* ── CARD 1: AI Tuning Controls ── */}
         <div>

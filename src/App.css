@@ -265,18 +265,39 @@
   perspective: 1200px;
 }
 
-/* 3-Column Studio Grid */
-.studio-grid {
+/* Studio Layout Grids */
+.studio-grid-video {
   display: grid;
-  grid-template-columns: 310px 1fr 310px;
-  gap: 1.1rem;
+  grid-template-columns: 1fr 1fr 320px;
+  gap: 1rem;
   align-items: start;
 }
-@media (max-width: 1400px) {
-  .studio-grid { grid-template-columns: 280px 1fr 280px; }
+@media (max-width: 1300px) {
+  .studio-grid-video {
+    grid-template-columns: 1fr 1fr;
+  }
 }
-@media (max-width: 1100px) {
-  .studio-grid { grid-template-columns: 1fr; }
+@media (max-width: 900px) {
+  .studio-grid-video {
+    grid-template-columns: 1fr;
+  }
+}
+
+.studio-grid-image {
+  display: grid;
+  grid-template-columns: 1fr 340px 300px;
+  gap: 1rem;
+  align-items: start;
+}
+@media (max-width: 1300px) {
+  .studio-grid-image {
+    grid-template-columns: 1fr 340px;
+  }
+}
+@media (max-width: 900px) {
+  .studio-grid-image {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Cards & Panels */
