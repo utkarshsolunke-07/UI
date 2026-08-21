@@ -1,14 +1,13 @@
-import * as Mp4Muxer from 'mp4-muxer';
-
 export async function exportOfflineVideo(
   videoElementSource,
   canvas,
-  webglEngine,
+  webglEngine, // Not used in parallel mode, kept for signature compatibility
   settings,
   onProgress,
   onComplete
 ) {
   return new Promise(async (resolve, reject) => {
+    let worker = null;
     try {
       const fps = settings.fps === 'original' ? 60 : (Number(settings.fps) || 60);
       const duration = videoElementSource.duration || 10;
@@ -17,133 +16,103 @@ export async function exportOfflineVideo(
       const dstW = canvas.width;
       const dstH = canvas.height;
       
-      // Attempt to find a supported H.264 Codec Profile by the user's hardware
+      // Probe codec support
       const candidateCodecs = [
-        'avc1.64003E', // High Level 6.2
-        'avc1.640034', // High Level 5.2
-        'avc1.640033', // High Level 5.1
-        'avc1.4d0034', // Main Level 5.2
-        'avc1.42E01F', // Baseline
-        'avc1.42001E'  // Fallback
+        'avc1.64003E', 'avc1.640034', 'avc1.640033',
+        'avc1.4d0034', 'avc1.42E01F', 'avc1.42001E'
       ];
-      
-      let codec = 'avc1.42001E'; // Safe default
-      
+      let codec = 'avc1.42001E';
       for (const c of candidateCodecs) {
         try {
           const support = await VideoEncoder.isConfigSupported({
-            codec: c,
-            width: dstW,
-            height: dstH,
-            bitrate: 60_000_000,
-            framerate: fps,
+            codec: c, width: dstW, height: dstH,
+            bitrate: 60_000_000, framerate: fps,
             hardwareAcceleration: 'prefer-hardware'
           });
-          if (support && support.supported) {
-            codec = c;
-            break;
-          }
+          if (support && support.supported) { codec = c; break; }
         } catch (e) {}
       }
       
-      const muxer = new Mp4Muxer.Muxer({
-        target: new Mp4Muxer.ArrayBufferTarget(),
-        video: {
-          codec: codec,
-          width: dstW,
-          height: dstH
-        },
-        fastStart: 'in-memory'
-      });
-      
-      let errorOccurred = false;
-
-      const videoEncoder = new VideoEncoder({
-        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-        error: (e) => { errorOccurred = true; reject(e); }
-      });
-      
-      videoEncoder.configure({
-        codec: codec,
-        width: dstW,
-        height: dstH,
-        bitrate: 60_000_000,
-        framerate: fps,
-        hardwareAcceleration: 'prefer-hardware'
-      });
-
       // ----------------------------------------------------
-      // AUDIO PROCESSING (Extract, Decode, Re-encode to AAC)
+      // AUDIO PROCESSING (Main Thread Decode)
       // ----------------------------------------------------
-      let audioEncoder = null;
+      let audioPayload = null;
       try {
-        const response = await fetch(videoElementSource.src);
-        const arrayBuffer = await response.arrayBuffer();
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const audioData = await audioCtx.decodeAudioData(arrayBuffer);
-        
-        muxer.options.audio = {
-          codec: 'mp4a.40.2', // AAC
-          numberOfChannels: audioData.numberOfChannels,
-          sampleRate: audioData.sampleRate
-        };
-
-        audioEncoder = new AudioEncoder({
-          output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
-          error: (e) => console.warn('Audio encoder error (audio dropped):', e)
-        });
-
-        audioEncoder.configure({
-          codec: 'mp4a.40.2',
-          sampleRate: audioData.sampleRate,
-          numberOfChannels: audioData.numberOfChannels,
-          bitrate: 320000
-        });
-
-        const numberOfFrames = audioData.length;
-        const numberOfChannels = audioData.numberOfChannels;
-        const sampleRate = audioData.sampleRate;
-        const chunkSize = sampleRate; // 1 second chunks
-
-        for (let i = 0; i < numberOfFrames; i += chunkSize) {
-          const frameCount = Math.min(chunkSize, numberOfFrames - i);
-          const chunkData = new Float32Array(frameCount * numberOfChannels);
-          for (let c = 0; c < numberOfChannels; c++) {
-            chunkData.set(audioData.getChannelData(c).subarray(i, i + frameCount), c * frameCount);
-          }
+        if (videoElementSource.src) {
+          const response = await fetch(videoElementSource.src);
+          const arrayBuffer = await response.arrayBuffer();
+          const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const audioData = await audioCtx.decodeAudioData(arrayBuffer);
           
-          const audioChunk = new AudioData({
-            format: 'f32-planar',
-            sampleRate: sampleRate,
-            numberOfFrames: frameCount,
-            numberOfChannels: numberOfChannels,
-            timestamp: (i / sampleRate) * 1000000,
-            data: chunkData
-          });
-          audioEncoder.encode(audioChunk);
-          audioChunk.close();
+          const channels = [];
+          for (let i = 0; i < audioData.numberOfChannels; i++) {
+            channels.push(audioData.getChannelData(i)); // Float32Array
+          }
+          audioPayload = {
+            buffer: channels,
+            numberOfChannels: audioData.numberOfChannels,
+            sampleRate: audioData.sampleRate
+          };
         }
-        await audioEncoder.flush();
       } catch (err) {
         console.warn('Silent video mode: Audio could not be processed.', err);
       }
 
+      // Initialize Web Worker
+      worker = new Worker(new URL('./upscaleWorker.js', import.meta.url), { type: 'module' });
+      
+      let workerResolve = null;
+      let workerReject = null;
+      
+      const waitForWorker = (action) => new Promise((res, rej) => {
+        workerResolve = res;
+        workerReject = rej;
+        action();
+      });
+
+      worker.onmessage = (e) => {
+        const { type, buffer, error } = e.data;
+        if (type === 'INIT_DONE' || type === 'FRAME_DONE') {
+          if (workerResolve) {
+            const r = workerResolve; workerResolve = null; r();
+          }
+        } else if (type === 'COMPLETE') {
+          if (workerResolve) {
+            const r = workerResolve; workerResolve = null; r(buffer);
+          }
+        } else if (type === 'ERROR') {
+          if (workerReject) {
+            const r = workerReject; workerReject = null; r(new Error(error));
+          }
+        }
+      };
+
+      // Send INIT
+      await waitForWorker(() => {
+        worker.postMessage({
+          type: 'INIT',
+          payload: {
+            dstW, dstH, fps, codec,
+            bitrate: 60_000_000,
+            audioData: audioPayload,
+            settings
+          }
+        });
+      });
+
       // ----------------------------------------------------
-      // FRAME BY FRAME VIDEO PROCESSING
+      // FRAME BY FRAME VIDEO PROCESSING (Parallel)
       // ----------------------------------------------------
       if (typeof videoElementSource.pause === 'function') {
         videoElementSource.pause();
       }
       
       for (let i = 0; i < totalFrames; i++) {
-        if (errorOccurred) break;
-        
         const currentTime = i / fps;
         
         if ('currentTime' in videoElementSource) {
           videoElementSource.currentTime = currentTime;
           
-          // Wait for video frame to seek precisely
           await new Promise((res) => {
             const onSeeked = () => {
               videoElementSource.removeEventListener('seeked', onSeeked);
@@ -156,42 +125,57 @@ export async function exportOfflineVideo(
             }
           });
         } else {
-          // Synthetic sample canvas - just allow requestAnimationFrame to tick
-          await new Promise(r => setTimeout(r, 1000 / fps));
+          await new Promise(r => setTimeout(r, 1000 / fps)); // Synthetic fallback
         }
         
-        // Draw WebGL pass
-        webglEngine.render(videoElementSource, settings);
-        webglEngine.gl.finish();
+        // Grab frame bitmap
+        let bitmap;
+        if (videoElementSource instanceof HTMLVideoElement) {
+          bitmap = await createImageBitmap(videoElementSource);
+        } else {
+          // Fallback if videoElementSource is just a canvas (sample video)
+          bitmap = await createImageBitmap(videoElementSource);
+        }
         
         const timestampMicroseconds = Math.floor((i / fps) * 1000000);
-        const frame = new VideoFrame(canvas, { timestamp: timestampMicroseconds });
+        const isKeyFrame = (i % (fps * 2)) === 0; 
         
-        const isKeyFrame = (i % (fps * 2)) === 0; // Keyframe every 2 seconds
-        videoEncoder.encode(frame, { keyFrame: isKeyFrame });
-        frame.close();
+        // Transfer to worker
+        await waitForWorker(() => {
+          worker.postMessage({
+            type: 'PROCESS_FRAME',
+            payload: {
+              bitmap,
+              timestamp: timestampMicroseconds,
+              isKeyFrame,
+              settings
+            }
+          }, [bitmap]);
+        });
         
-        // Let encoder process & update UI
+        // Smooth Progress Update
         if (i % 5 === 0) {
           const pct = Math.round((i / totalFrames) * 100);
-          onProgress(pct, `Offline Processing Frame ${i} of ${totalFrames} (${pct}%)`);
-          await new Promise(r => setTimeout(r, 0));
+          onProgress(pct, `Parallel Offline Processing Frame ${i} of ${totalFrames} (${pct}%)`);
         }
       }
       
-      onProgress(100, 'Finalizing 4K MP4 Encoded File...');
+      onProgress(100, 'Finalizing 4K MP4 Encoded File in Worker...');
       
-      await videoEncoder.flush();
-      muxer.finalize();
+      const finalBuffer = await waitForWorker(() => {
+        worker.postMessage({ type: 'FINALIZE' });
+      });
       
-      const buffer = muxer.target.buffer;
-      const blob = new Blob([buffer], { type: 'video/mp4' });
+      worker.terminate();
+      
+      const blob = new Blob([finalBuffer], { type: 'video/mp4' });
       const videoUrl = URL.createObjectURL(blob);
       
       onComplete(blob, videoUrl);
       resolve({ blob, videoUrl });
       
     } catch (err) {
+      if (worker) worker.terminate();
       reject(err);
     }
   });

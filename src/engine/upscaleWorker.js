@@ -1,60 +1,128 @@
-// Parallel Web Worker for Utkarsh AI Super-Resolution Engine
-/* eslint-disable no-restricted-globals */
+import * as Mp4Muxer from 'mp4-muxer';
+import { WebGLVideoEngine } from './webglVideoEngine.js';
 
-self.onmessage = function (e) {
-  const { id, imageData, settings, startY, endY, totalWidth, scale } = e.data;
+let muxer = null;
+let videoEncoder = null;
+let audioEncoder = null;
+let webglEngine = null;
+let canvas = null;
 
-  const width = totalWidth;
-  const height = endY - startY;
-  const srcPixels = new Uint8ClampedArray(imageData);
+self.onmessage = async function(e) {
+  const { type, payload } = e.data;
 
-  const dstW = width * scale;
-  const dstH = height * scale;
-  const dstBuffer = new Uint8ClampedArray(dstW * dstH * 4);
+  if (type === 'INIT') {
+    const { dstW, dstH, fps, bitrate, codec, audioData, settings } = payload;
+    
+    try {
+      // 1. Initialize OffscreenCanvas and WebGL Engine
+      canvas = new OffscreenCanvas(dstW, dstH);
+      webglEngine = new WebGLVideoEngine(canvas);
+      
+      // 2. Initialize Mp4Muxer
+      muxer = new Mp4Muxer.Muxer({
+        target: new Mp4Muxer.ArrayBufferTarget(),
+        video: { codec: codec, width: dstW, height: dstH },
+        fastStart: 'in-memory'
+      });
 
-  const sharpness = (settings.sharpness || 30) / 100;
-  const claheAmt = (settings.clahe || 25) / 100;
+      // 3. Initialize Audio (if available)
+      if (audioData) {
+        muxer.options.audio = {
+          codec: 'mp4a.40.2',
+          numberOfChannels: audioData.numberOfChannels,
+          sampleRate: audioData.sampleRate
+        };
+        
+        audioEncoder = new AudioEncoder({
+          output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+          error: (err) => console.warn('Worker Audio Encoder error:', err)
+        });
+        
+        audioEncoder.configure({
+          codec: 'mp4a.40.2',
+          sampleRate: audioData.sampleRate,
+          numberOfChannels: audioData.numberOfChannels,
+          bitrate: 320000
+        });
 
-  // Parallel NEDI & Bilateral filtering loop across slice rows
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const srcIdx = (y * width + x) * 4;
-      const r = srcPixels[srcIdx];
-      const g = srcPixels[srcIdx + 1];
-      const b = srcPixels[srcIdx + 2];
-      const a = srcPixels[srcIdx + 3];
+        // Encode audio buffer
+        const { buffer, numberOfChannels, sampleRate } = audioData;
+        const numberOfFrames = buffer[0].length;
+        const chunkSize = sampleRate; 
 
-      // Map to upscaled grid
-      for (let sy = 0; sy < scale; sy++) {
-        for (let sx = 0; sx < scale; sx++) {
-          const dx = x * scale + sx;
-          const dy = y * scale + sy;
-          const dstIdx = (dy * dstW + dx) * 4;
-
-          // CLAHE & High-pass sharpening enhancement
-          let nr = r + (r - 128) * claheAmt * 0.25;
-          let ng = g + (g - 128) * claheAmt * 0.25;
-          let nb = b + (b - 128) * claheAmt * 0.25;
-
-          if (sharpness > 0) {
-            nr += (nr - 128) * sharpness * 0.2;
-            ng += (ng - 128) * sharpness * 0.2;
-            nb += (nb - 128) * sharpness * 0.2;
+        for (let i = 0; i < numberOfFrames; i += chunkSize) {
+          const frameCount = Math.min(chunkSize, numberOfFrames - i);
+          const chunkData = new Float32Array(frameCount * numberOfChannels);
+          for (let c = 0; c < numberOfChannels; c++) {
+            chunkData.set(buffer[c].subarray(i, i + frameCount), c * frameCount);
           }
-
-          dstBuffer[dstIdx] = Math.min(255, Math.max(0, nr));
-          dstBuffer[dstIdx + 1] = Math.min(255, Math.max(0, ng));
-          dstBuffer[dstIdx + 2] = Math.min(255, Math.max(0, nb));
-          dstBuffer[dstIdx + 3] = a;
+          
+          const audioChunk = new AudioData({
+            format: 'f32-planar',
+            sampleRate: sampleRate,
+            numberOfFrames: frameCount,
+            numberOfChannels: numberOfChannels,
+            timestamp: (i / sampleRate) * 1000000,
+            data: chunkData
+          });
+          audioEncoder.encode(audioChunk);
+          audioChunk.close();
         }
+        await audioEncoder.flush();
       }
+
+      // 4. Initialize Video Encoder
+      videoEncoder = new VideoEncoder({
+        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+        error: (err) => {
+          self.postMessage({ type: 'ERROR', error: err.message });
+        }
+      });
+      
+      videoEncoder.configure({
+        codec: codec,
+        width: dstW,
+        height: dstH,
+        bitrate: bitrate || 60_000_000,
+        framerate: fps,
+        hardwareAcceleration: 'prefer-hardware'
+      });
+
+      self.postMessage({ type: 'INIT_DONE' });
+    } catch (err) {
+      self.postMessage({ type: 'ERROR', error: err.message });
+    }
+  } 
+  
+  else if (type === 'PROCESS_FRAME') {
+    const { bitmap, timestamp, isKeyFrame, settings } = payload;
+    
+    try {
+      // Draw WebGL pass directly to OffscreenCanvas
+      webglEngine.render(bitmap, settings);
+      webglEngine.gl.finish(); // Ensure GPU is done
+      
+      const frame = new VideoFrame(canvas, { timestamp });
+      videoEncoder.encode(frame, { keyFrame: isKeyFrame });
+      frame.close();
+      
+      bitmap.close(); // Prevent memory leak
+      
+      self.postMessage({ type: 'FRAME_DONE' });
+    } catch (err) {
+      self.postMessage({ type: 'ERROR', error: err.message });
+    }
+  } 
+  
+  else if (type === 'FINALIZE') {
+    try {
+      await videoEncoder.flush();
+      muxer.finalize();
+      
+      const buffer = muxer.target.buffer;
+      self.postMessage({ type: 'COMPLETE', buffer }, [buffer]);
+    } catch (err) {
+      self.postMessage({ type: 'ERROR', error: err.message });
     }
   }
-
-  self.postMessage({
-    id,
-    dstBuffer: dstBuffer.buffer,
-    dstW,
-    dstH,
-  }, [dstBuffer.buffer]);
 };
