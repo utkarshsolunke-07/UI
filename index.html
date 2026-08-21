@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="AuraScale AI - Advanced Image & Video AI Super-Resolution Upscaler Web Application. 100% Client-Side WebGL Hardware Accelerated Super-Resolution." />
+    <title>AuraScale AI | Neural Image & Video Super-Resolution Upscaler</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+              mono: ['"JetBrains Mono"', 'monospace'],
+            },
+          },
+        },
+      }
+    </script>
+  </head>
+  <body class="bg-[#060913] text-slate-100 antialiased selection:bg-violet-500 selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
