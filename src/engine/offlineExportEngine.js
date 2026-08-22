@@ -129,16 +129,23 @@ export async function exportOfflineVideo(
 
       let resolveWorker = null;
       let rejectWorker  = null;
+      let pendingFrames = 0;
+      let frameQueueResolvers = [];
 
-      const awaitWorker = () => new Promise((res, rej) => {
+      const awaitWorkerInit = () => new Promise((res, rej) => {
         resolveWorker = res;
         rejectWorker  = rej;
       });
 
       worker.onmessage = ({ data }) => {
         const { type, buffer, error } = data;
-        if (type === 'INIT_DONE' || type === 'FRAME_DONE') {
+        if (type === 'INIT_DONE') {
           resolveWorker?.(); resolveWorker = null;
+        } else if (type === 'FRAME_DONE') {
+          pendingFrames--;
+          if (frameQueueResolvers.length > 0) {
+            frameQueueResolvers.shift()();
+          }
         } else if (type === 'COMPLETE') {
           resolveWorker?.(buffer); resolveWorker = null;
         } else if (type === 'ERROR') {
@@ -152,7 +159,7 @@ export async function exportOfflineVideo(
       };
 
       // Send INIT
-      const initP = awaitWorker();
+      const initP = awaitWorkerInit();
       worker.postMessage({
         type: 'INIT',
         payload: { dstW, dstH, fps, codec, bitrate: BITRATE, audioData: audioPayload, settings },
@@ -210,14 +217,19 @@ export async function exportOfflineVideo(
           }
         }
 
+        // Pipeline optimization: allow up to 3 frames in-flight (extraction decoupled from encoding)
+        const MAX_PENDING = 3;
+        if (pendingFrames >= MAX_PENDING) {
+          await new Promise(res => frameQueueResolvers.push(res));
+        }
+
         // Send frame to worker for AI upscaling
         const timestamp = Math.round(targetTime * 1_000_000);
-        const frameP = awaitWorker();
+        pendingFrames++;
         worker.postMessage({ type: 'PROCESS_FRAME', payload: { bitmap, timestamp } }, [bitmap]);
-        await frameP;
 
-        // Minimum per-frame delay to prevent encoder overflow at high FPS
-        await new Promise(r => setTimeout(r, 8));
+        // Minimum per-frame delay to prevent main thread blocking
+        await new Promise(r => setTimeout(r, 4));
 
         // Report progress on EVERY frame for accurate UI feedback
         const pct = Math.round(8 + (i / totalFrames) * 88);
@@ -226,7 +238,12 @@ export async function exportOfflineVideo(
 
       onProgress(97, 'Finalizing MP4 — encoding remaining frames...');
 
-      const finalizeP = awaitWorker();
+      // Wait for all pending frames to finish
+      while (pendingFrames > 0) {
+        await new Promise(res => frameQueueResolvers.push(res));
+      }
+
+      const finalizeP = awaitWorkerInit();
       worker.postMessage({ type: 'FINALIZE' });
       const finalBuffer = await finalizeP;
 

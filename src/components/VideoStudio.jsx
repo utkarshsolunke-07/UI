@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   generateSampleVideoCanvas,
-  recordUpscaledVideoStream,
   computeCanvasFilter, drawVignette
 } from '../engine/videoUpscalerEngine';
 import { exportOfflineVideo } from '../engine/offlineExportEngine';
@@ -230,48 +229,22 @@ export default function VideoStudio({ settings, setSettings }) {
     if (!canvas) return;
     setIsExporting(true);
     setExportProgress(5);
-    setExportStatus('Initializing AI Stream Exporter…');
+    setExportStatus('Initializing AI Frame-by-Frame Exporter…');
 
     try {
-      const durationMs = (duration || 10) * 1000;
-      const targetFps  = settings.fps === 'original' ? 60 : (Number(settings.fps) || 60);
-
-      try {
-        const videoSource = isSample ? sampleRef.current?.canvas : videoRef.current;
-        await exportOfflineVideo(
-          videoSource, canvas, webglEngineRef.current, settings,
-          (p, msg) => { setExportProgress(p); setExportStatus(msg); },
-          (blob, url) => { 
-            setExportedUrl(url); 
-            setIsExporting(false); 
-          }
-        );
-      } catch (err) {
-        console.warn('Offline export failed, falling back to real-time MediaRecorder', err);
-        setExportStatus('Hardware encoder failed. Falling back to realtime encoding...');
-        
-        if (videoRef.current) {
-          videoRef.current.currentTime = 0;
-          videoRef.current.playbackRate = 1.0;
-          videoRef.current.muted = true; // Important for autoplay
-          videoRef.current.play().catch(e => console.warn('Playback blocked', e));
-          setIsPlaying(true);
+      const videoSource = isSample ? sampleRef.current?.canvas : videoRef.current;
+      await exportOfflineVideo(
+        videoSource, canvas, webglEngineRef.current, settings,
+        (p, msg) => { setExportProgress(p); setExportStatus(msg); },
+        (blob, url) => { 
+          setExportedUrl(url); 
+          setIsExporting(false); 
         }
-
-        const videoSource = isSample ? sampleRef.current?.video || sampleRef.current?.canvas : videoRef.current;
-        await recordUpscaledVideoStream(
-          canvas, videoSource, durationMs, targetFps,
-          (p, msg) => { setExportProgress(p); setExportStatus(msg); },
-          (blob, url) => { 
-            setExportedUrl(url); 
-            setIsExporting(false); 
-            if (videoRef.current) videoRef.current.pause();
-          }
-        );
-      }
-    } catch (fallbackErr) {
+      );
+    } catch (err) {
       setIsExporting(false);
-      alert(`Export totally failed. Error: ${fallbackErr.message}`);
+      console.error('AI Export failed:', err);
+      alert(`AI Frame-by-Frame Export failed. Error: ${err.message}`);
     }
   };
 
