@@ -24,9 +24,18 @@ export async function exportOfflineVideo(
     let worker = null;
 
     try {
-      const rawDur = videoElementSource.duration;
+      const rawDur  = videoElementSource.duration;
       const duration = (rawDur && !isNaN(rawDur) && isFinite(rawDur)) ? rawDur : 10;
-      const fps = settings.targetFps || 60;
+
+      // FPS: respect user setting. 'original' defaults to 30fps for reliability.
+      let fps = 30;
+      if (settings.fps && settings.fps !== 'original') {
+        fps = Number(settings.fps) || 30;
+      } else if (settings.targetFps) {
+        fps = Number(settings.targetFps) || 30;
+      }
+      // Clamp to safe range
+      fps = Math.min(Math.max(fps, 15), 120);
       const totalFrames = Math.floor(duration * fps);
 
       // Source dimensions
@@ -83,7 +92,8 @@ export async function exportOfflineVideo(
         } catch (_) { /* try next */ }
       }
 
-      onProgress(3, `Codec selected: ${codec} | Target: ${dstW}×${dstH} @ ${fps}fps`);
+      onProgress(3, `Codec: ${codec} | Output: ${dstW}x${dstH} @ ${fps}fps | Source: ${srcW}x${srcH}`);
+      console.log(`[Export] Resolution confirmed: ${srcW}x${srcH} -> ${dstW}x${dstH} @ ${fps}fps (scale: ${(dstH/srcH).toFixed(1)}x)`);
 
       // ── Audio extraction ──
       let audioPayload = null;
@@ -160,56 +170,50 @@ export async function exportOfflineVideo(
         }
       }
 
-      // ── Frame-by-frame extraction ──
+      // ── Frame-by-frame extraction with per-frame progress ──
       for (let i = 0; i < totalFrames; i++) {
         const targetTime = i / fps;
 
-        // Seek to frame (skip seek if already at target timestamp, preventing frame 0 stall)
+        // Seek to exact frame timestamp
         if (isVideo) {
           if (Math.abs(videoElementSource.currentTime - targetTime) > 0.001) {
             await new Promise((res) => {
               let done = false;
               const finish = () => { if (done) return; done = true; res(); };
-
-              const timeout = setTimeout(finish, 500); // 500ms max seek wait
-
+              const timeout = setTimeout(finish, 800); // 800ms max seek wait
               videoElementSource.addEventListener('seeked', function handler() {
                 videoElementSource.removeEventListener('seeked', handler);
                 clearTimeout(timeout);
                 finish();
               }, { once: true });
-
               videoElementSource.currentTime = targetTime;
             });
           }
         } else {
-          // Canvas source — just wait a tick
           await new Promise(r => requestAnimationFrame(r));
         }
 
-        // Bug2 fix: Removed requestAnimationFrame() wrapper.
-        // rAF NEVER fires when the browser tab is in the background,
-        // causing exports to hang forever. The 'seeked' event already
-        // guarantees the video frame is decoded and ready for capture.
+        // Capture frame from source
         let bitmap;
         try {
           bitmap = await createImageBitmap(videoElementSource);
         } catch (err) {
-          console.warn(`[Export] Frame ${i} createImageBitmap failed:`, err);
-          continue; // Skip this frame rather than crash entire export
+          console.warn(`[Export] Frame ${i} capture failed:`, err);
+          continue;
         }
 
-        // Send frame to worker
+        // Send frame to worker for AI upscaling
         const timestamp = Math.round(targetTime * 1_000_000);
         const frameP = awaitWorker();
-        worker.postMessage({ type: 'PROCESS_FRAME', payload: { bitmap, timestamp, settings } }, [bitmap]);
+        worker.postMessage({ type: 'PROCESS_FRAME', payload: { bitmap, timestamp } }, [bitmap]);
         await frameP;
 
-        // Progress update every 3 frames
-        if (i % 3 === 0) {
-          const pct = Math.round(8 + (i / totalFrames) * 88);
-          onProgress(pct, `AI Upscaling Frame ${i + 1}/${totalFrames} (${pct}%)`);
-        }
+        // Minimum per-frame delay to prevent encoder overflow at high FPS
+        await new Promise(r => setTimeout(r, 8));
+
+        // Report progress on EVERY frame for accurate UI feedback
+        const pct = Math.round(8 + (i / totalFrames) * 88);
+        onProgress(pct, `AI Upscaling Frame ${i + 1} / ${totalFrames} — ${dstW}x${dstH} (${pct}%)`);
       }
 
       onProgress(97, 'Finalizing MP4 — encoding remaining frames…');

@@ -100,7 +100,7 @@ export class WebGLVideoEngine {
     }`;
   }
 
-  // PASS 1: EASU — Edge-Adaptive Spatial Upsampling with directional edge enhancement
+  // PASS 1: EASU — 6-tap Lanczos Super-Resolution with Deringing
   _fsEASU() {
     if (this.isWebGL2) {
       return `#version 300 es
@@ -112,59 +112,77 @@ export class WebGLVideoEngine {
       uniform vec2 u_srcSize;
       uniform vec2 u_dstSize;
 
-      float lanczos(float x) {
+      // Lanczos-3 sinc kernel (6-tap radius)
+      float lanczos3(float x) {
         x = abs(x);
-        if (x < 0.001) return 1.0;
-        if (x >= 2.0) return 0.0;
-        float px = 3.1415926535 * x;
-        float px2 = px * 0.5;
-        return (sin(px) / px) * (sin(px2) / px2);
+        if (x < 0.0001) return 1.0;
+        if (x >= 3.0) return 0.0;
+        float px = 3.14159265359 * x;
+        float px3 = px / 3.0;
+        return (sin(px) / px) * (sin(px3) / px3);
       }
 
       void main() {
         vec2 rcpSrc = 1.0 / u_srcSize;
-        vec4 c  = texture(u_src, v_uv);
-        vec4 n  = texture(u_src, v_uv + vec2(0.0, -rcpSrc.y));
-        vec4 s  = texture(u_src, v_uv + vec2(0.0,  rcpSrc.y));
-        vec4 e  = texture(u_src, v_uv + vec2( rcpSrc.x, 0.0));
-        vec4 w  = texture(u_src, v_uv + vec2(-rcpSrc.x, 0.0));
+        vec2 scale  = u_dstSize / u_srcSize;
 
-        float lumC = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
-        float lumN = dot(n.rgb, vec3(0.2126, 0.7152, 0.0722));
-        float lumS = dot(s.rgb, vec3(0.2126, 0.7152, 0.0722));
-        float lumE = dot(e.rgb, vec3(0.2126, 0.7152, 0.0722));
-        float lumW = dot(w.rgb, vec3(0.2126, 0.7152, 0.0722));
-
-        float dH = abs(lumE - lumW);
-        float dV = abs(lumN - lumS);
-        float edgeStrength = clamp((dH + dV) * 6.0, 0.0, 1.0);
-
+        // Map destination pixel to source space with 0.5 sub-pixel offset
         vec2 srcPixel = v_uv * u_srcSize - 0.5;
         vec2 fi = floor(srcPixel);
         vec2 frac = srcPixel - fi;
 
+        // 6-tap Lanczos-3 reconstruction
         vec4 col = vec4(0.0);
         float wTotal = 0.0;
-        for (int iy = -1; iy <= 2; iy++) {
-          float wy = lanczos(float(iy) - frac.y);
-          for (int ix = -1; ix <= 2; ix++) {
-            float wx = lanczos(float(ix) - frac.x);
+        vec4 vMin = vec4(1e9);
+        vec4 vMax = vec4(-1e9);
+
+        for (int iy = -2; iy <= 3; iy++) {
+          float wy = lanczos3(float(iy) - frac.y);
+          for (int ix = -2; ix <= 3; ix++) {
+            float wx = lanczos3(float(ix) - frac.x);
             float wt = wx * wy;
-            vec2 sampleUV = (fi + vec2(float(ix), float(iy)) + 0.5) / u_srcSize;
-            col += texture(u_src, clamp(sampleUV, vec2(0.0), vec2(1.0))) * wt;
+            vec2 sampleUV = (fi + vec2(float(ix), float(iy)) + 0.5) * rcpSrc;
+            sampleUV = clamp(sampleUV, vec2(0.0), vec2(1.0));
+            vec4 s = texture(u_src, sampleUV);
+            col += s * wt;
             wTotal += wt;
+            // Track local min/max for deringing clamp
+            vMin = min(vMin, s);
+            vMax = max(vMax, s);
           }
         }
         col /= max(wTotal, 0.0001);
 
-        // Directional sub-pixel edge sharpening boost
-        vec4 edgeDetail = c + (c - (n + s + e + w) * 0.25) * (0.8 + edgeStrength * 1.2);
+        // Deringing: clamp to local min/max to prevent ringing at high scale factors
+        col = clamp(col, vMin, vMax);
 
-        fragColor = clamp(mix(col, edgeDetail, 0.45 + edgeStrength * 0.45), 0.0, 1.0);
+        // Edge-adaptive sharpness boost using Sobel luminance gradient
+        vec4 cC = texture(u_src, v_uv);
+        vec4 cN = texture(u_src, v_uv + vec2(0.0, -rcpSrc.y));
+        vec4 cS = texture(u_src, v_uv + vec2(0.0,  rcpSrc.y));
+        vec4 cE = texture(u_src, v_uv + vec2( rcpSrc.x, 0.0));
+        vec4 cW = texture(u_src, v_uv + vec2(-rcpSrc.x, 0.0));
+
+        float lumC = dot(cC.rgb, vec3(0.2126, 0.7152, 0.0722));
+        float lumN = dot(cN.rgb, vec3(0.2126, 0.7152, 0.0722));
+        float lumS = dot(cS.rgb, vec3(0.2126, 0.7152, 0.0722));
+        float lumE = dot(cE.rgb, vec3(0.2126, 0.7152, 0.0722));
+        float lumW = dot(cW.rgb, vec3(0.2126, 0.7152, 0.0722));
+
+        float dH = abs(lumE - lumW);
+        float dV = abs(lumN - lumS);
+        float edgeStrength = clamp((dH + dV) * 8.0, 0.0, 1.0);
+
+        // Sub-pixel edge detail injection (directional, safe strength)
+        vec4 edgeDetail = cC + (cC - (cN + cS + cE + cW) * 0.25) * (0.6 + edgeStrength * 0.8);
+        edgeDetail = clamp(edgeDetail, vMin * 0.95, vMax * 1.05);
+
+        fragColor = clamp(mix(col, edgeDetail, 0.35 + edgeStrength * 0.40), 0.0, 1.0);
       }`;
     }
 
-    // WebGL 1 Shader
+    // WebGL 1 fallback — bilinear with basic sharpening
     return `
     precision highp float;
     varying vec2 v_uv;
@@ -174,15 +192,13 @@ export class WebGLVideoEngine {
 
     void main() {
       vec2 rcpSrc = 1.0 / u_srcSize;
-      vec4 c  = texture2D(u_src, v_uv);
-      vec4 n  = texture2D(u_src, v_uv + vec2(0.0, -rcpSrc.y));
-      vec4 s  = texture2D(u_src, v_uv + vec2(0.0,  rcpSrc.y));
-      vec4 e  = texture2D(u_src, v_uv + vec2( rcpSrc.x, 0.0));
-      vec4 w  = texture2D(u_src, v_uv + vec2(-rcpSrc.x, 0.0));
-
-      vec4 laplacian = c - (n + s + e + w) * 0.25;
-      vec4 sharp = c + laplacian * 1.5;
-
+      vec4 cC = texture2D(u_src, v_uv);
+      vec4 cN = texture2D(u_src, v_uv + vec2(0.0, -rcpSrc.y));
+      vec4 cS = texture2D(u_src, v_uv + vec2(0.0,  rcpSrc.y));
+      vec4 cE = texture2D(u_src, v_uv + vec2( rcpSrc.x, 0.0));
+      vec4 cW = texture2D(u_src, v_uv + vec2(-rcpSrc.x, 0.0));
+      vec4 laplacian = cC - (cN + cS + cE + cW) * 0.25;
+      gl_FragColor = clamp(cC + laplacian * 1.2, 0.0, 1.0);
     }`;
   }
 
