@@ -17,14 +17,13 @@ export function useWebglRenderLoop({
     const render = () => {
       const canvas = canvasRef.current;
       const rawCanvas = rawCanvasRef.current;
-      // We can continue to draw rawCanvas even if right canvas is unmounted
-      if (!canvas && !rawCanvas) {
+      if (!canvas) {
         animIdRef.current = requestAnimationFrame(render);
         return;
       }
 
       // Initialize WebGL engine if it doesn't exist
-      if (canvas && !webglEngineRef.current) {
+      if (!webglEngineRef.current) {
         try {
           webglEngineRef.current = new WebGLVideoEngine(canvas);
         } catch (e) {
@@ -63,14 +62,12 @@ export function useWebglRenderLoop({
       dstW = dstW % 2 === 0 ? dstW : dstW + 1;
       dstH = dstH % 2 === 0 ? dstH : dstH + 1;
 
-      if (canvas) {
-        if (canvas.width !== dstW || canvas.height !== dstH) {
-          canvas.width = dstW;
-          canvas.height = dstH;
-          // Re-init webgl engine context bounds if canvas resized
-          if (webglEngineRef.current?.gl) {
-            webglEngineRef.current.gl.viewport(0, 0, dstW, dstH);
-          }
+      if (canvas.width !== dstW || canvas.height !== dstH) {
+        canvas.width = dstW;
+        canvas.height = dstH;
+        // Re-init webgl engine context bounds if canvas resized
+        if (webglEngineRef.current?.gl) {
+          webglEngineRef.current.gl.viewport(0, 0, dstW, dstH);
         }
       }
 
@@ -85,7 +82,7 @@ export function useWebglRenderLoop({
       }
 
       /* 2. Render AI Upscaled & Sharpened Canvas via WebGL (Right Layer) */
-      if (canvas && src && webglEngineRef.current) {
+      if (src && webglEngineRef.current) {
         webglEngineRef.current.render(src, {
           sharpness: settings.sharpness ?? 70,
           clarity: settings.clarity ?? 65,

@@ -185,7 +185,7 @@ export function generateSampleVideoCanvas() {
 
     ctx.fillStyle = '#94a3b8';
     ctx.font = '11px "JetBrains Mono", monospace';
-    ctx.fillText('AI Upscale Multi-Pass Real-Time Super-Resolution Engine', 20, 56);
+    ctx.fillText('WebGPU Multi-Pass Real-Time Super-Resolution Engine', 20, 56);
 
     // Synthetic compression noise & pixelation simulation
     const tempCanvas = document.createElement('canvas');
@@ -211,11 +211,11 @@ export function generateSampleVideoCanvas() {
 /**
  * Record Upscaled Video Stream via MediaRecorder API (With High FPS & Silent Audio Track Extraction)
  */
-export function recordUpscaledVideoStream(canvas, videoElementSource, durationMs, targetFps = 30, onProgress, onComplete) {
+export function recordUpscaledVideoStream(canvas, videoElementSource, durationMs, targetFps = 60, onProgress, onComplete) {
   return new Promise((resolve, reject) => {
     try {
-      const fps = typeof targetFps === 'number' && targetFps > 0 ? targetFps : 30;
-      const canvasStream = canvas.captureStream(fps); // Stable FPS capture stream
+      const fps = typeof targetFps === 'number' && targetFps > 0 ? targetFps : 60;
+      const canvasStream = canvas.captureStream(fps); // High FPS capture stream (60 / 120 FPS)
       const tracks = [...canvasStream.getVideoTracks()];
 
       /* Extract & Merge Source Audio Tracks cleanly without speaker output */
@@ -288,7 +288,7 @@ export function recordUpscaledVideoStream(canvas, videoElementSource, durationMs
 
       mediaRecorder.start(100);
 
-      /* Force Frame Injection Loop */
+      /* Force High-FPS Frame Injection Loop (60 / 120 FPS) */
       const videoTrack = canvasStream.getVideoTracks()[0];
       const frameInterval = 1000 / fps;
       const frameTimer = setInterval(() => {
@@ -301,7 +301,7 @@ export function recordUpscaledVideoStream(canvas, videoElementSource, durationMs
       const timer = setInterval(() => {
         const elapsed = Date.now() - startTime;
         const pct = Math.min(100, Math.round((elapsed / durationMs) * 100));
-        onProgress?.(pct, `Executing AI Upscale Process (${pct}%)...`);
+        onProgress?.(pct, `Upscaling AI Video & Audio Stream at ${fps} FPS (${pct}%)...`);
 
         if (elapsed >= durationMs) {
           clearInterval(timer);

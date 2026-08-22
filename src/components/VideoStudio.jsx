@@ -69,7 +69,6 @@ export default function VideoStudio({ settings, setSettings }) {
   const [activeTab, setActiveTab]             = useState('enhance');
   const [isPreviewOpen, setIsPreviewOpen]     = useState(false);
   const [viewMode, setViewMode]               = useState('side-by-side'); // 'side-by-side' (default) or 'split'
-  const [triggerExport, setTriggerExport]     = useState(false);
 
 
 
@@ -88,7 +87,6 @@ export default function VideoStudio({ settings, setSettings }) {
   const webglEngineRef  = useRef(null);    // WebGL Engine Reference
   const fileInputRef    = useRef(null);
   const sampleRef       = useRef(null);
-  const exportedVideoRef= useRef(null);
   const isDragging      = useRef(false);
   const animIdRef       = useRef(null);
 
@@ -135,20 +133,23 @@ export default function VideoStudio({ settings, setSettings }) {
 
   /* Video Controls */
   const togglePlay = () => {
-    setIsPlaying(p => {
-      const next = !p;
-      if (isSample) return next; // Sample animation is handled by render loop
-
-      if (videoRef.current) {
-        if (next) videoRef.current.play().catch(e => console.warn(e));
-        else videoRef.current.pause();
+    if (isSample) {
+      setIsPlaying(p => !p);
+      return;
+    }
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        videoRef.current.play()
+          .then(() => setIsPlaying(true))
+          .catch(err => {
+            console.warn('Video playback interrupted:', err);
+            setIsPlaying(false);
+          });
       }
-      if (exportedVideoRef.current) {
-        if (next) exportedVideoRef.current.play().catch(e => console.warn(e));
-        else exportedVideoRef.current.pause();
-      }
-      return next;
-    });
+    }
   };
 
   const handleSeek = (e) => {
@@ -157,18 +158,12 @@ export default function VideoStudio({ settings, setSettings }) {
     if (!isSample && videoRef.current) {
       videoRef.current.currentTime = v;
     }
-    if (exportedVideoRef.current) {
-      exportedVideoRef.current.currentTime = v;
-    }
   };
 
   const handleSpeed = (s) => {
     setPlaybackSpeed(s);
     if (!isSample && videoRef.current) {
       videoRef.current.playbackRate = s;
-    }
-    if (exportedVideoRef.current) {
-      exportedVideoRef.current.playbackRate = s;
     }
   };
 
@@ -193,35 +188,25 @@ export default function VideoStudio({ settings, setSettings }) {
   const onContainerMouseUp = () => { isDragging.current = false; };
 
   /* Export Stream */
-  const handleExport = () => {
-    setIsExporting(true);
-    setExportProgress(5);
-    setExportStatus('Initializing MediaRecorder VP9 stream exporter…');
-    setTriggerExport(true);
-  };
-
-  useEffect(() => {
-    if (triggerExport && (isSample || videoRef.current) && (canvasRef.current || true)) {
-      setTriggerExport(false);
-      runExportPipeline();
-    }
-  }, [triggerExport]);
-
-  const runExportPipeline = async () => {
-    const canvas = canvasRef.current;
-    if (!canvas) {
-      console.warn("Canvas not mounted yet.");
+  const handleExport = async () => {
+    if (exportedUrl) {
+      setExportedUrl(null);
+      setTimeout(() => startExportProcess(), 50);
       return;
     }
-    const durationMs = (duration || 10) * 1000;
-    const targetFps  = 30; // Solid 30 FPS for reliable export without FPS drops
+    startExportProcess();
+  };
+
+  const startExportProcess = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    setIsExporting(true);
+    setExportProgress(5);
+    setExportStatus('Initializing AI Stream Exporter…');
+
     try {
-      if (videoRef.current) {
-        videoRef.current.currentTime = 0;
-        videoRef.current.playbackRate = 1.0;
-        videoRef.current.muted = false;
-        // Don't play() here, offline engine seeks manually
-      }
+      const durationMs = (duration || 10) * 1000;
+      const targetFps  = settings.fps === 'original' ? 60 : (Number(settings.fps) || 60);
 
       try {
         const videoSource = isSample ? sampleRef.current?.canvas : videoRef.current;
@@ -235,29 +220,30 @@ export default function VideoStudio({ settings, setSettings }) {
         );
       } catch (err) {
         console.warn('Offline export failed, falling back to real-time MediaRecorder', err);
-        setExportStatus('Hardware encoder failed. Falling back to realtime VP9 encoding...');
-        const videoSource = isSample ? sampleRef.current?.video || sampleRef.current?.canvas : videoRef.current;
+        setExportStatus('Hardware encoder failed. Falling back to realtime encoding...');
         
-        // Ensure video is playing for real-time capture
         if (videoRef.current) {
-          await videoRef.current.play().catch(e => console.warn(e));
+          videoRef.current.currentTime = 0;
+          videoRef.current.playbackRate = 1.0;
+          videoRef.current.muted = true; // Important for autoplay
+          videoRef.current.play().catch(e => console.warn('Playback blocked', e));
           setIsPlaying(true);
         }
 
+        const videoSource = isSample ? sampleRef.current?.video || sampleRef.current?.canvas : videoRef.current;
         await recordUpscaledVideoStream(
           canvas, videoSource, durationMs, targetFps,
           (p, msg) => { setExportProgress(p); setExportStatus(msg); },
           (blob, url) => { 
             setExportedUrl(url); 
-            setIsExporting(false);
+            setIsExporting(false); 
             if (videoRef.current) videoRef.current.pause();
-            setIsPlaying(false);
           }
         );
       }
-    } catch (criticalErr) {
+    } catch (fallbackErr) {
       setIsExporting(false);
-      alert(`Critical error during export initialization: ${criticalErr.message}`);
+      alert(`Export totally failed. Error: ${fallbackErr.message}`);
     }
   };
 
@@ -372,6 +358,23 @@ export default function VideoStudio({ settings, setSettings }) {
               </div>
             </div>
 
+            <div>
+              <div className="section-title">TARGET OUTPUT FPS</div>
+              <div className="pill-row">
+                {[
+                  { l: 'Original (Source)', f: 'original' },
+                  { l: '24 FPS', f: 24 },
+                  { l: '30 FPS', f: 30 },
+                  { l: '60 FPS', f: 60 },
+                  { l: '120 FPS', f: 120 }
+                ].map(({ l, f }) => (
+                  <button key={f} className={`res-pill ${settings.fps === f ? 'active' : ''}`} onClick={() => set('fps', f)}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="divider" />
             <div className="section-title">QUICK PRESET ACCELERATORS</div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.4rem' }}>
@@ -405,8 +408,7 @@ export default function VideoStudio({ settings, setSettings }) {
                 AI UPSCALE MECHANISM & SERVICES
               </div>
               <div style={{ fontSize: '0.72rem', color: 'var(--text)', fontWeight: 800, marginBottom: '0.6rem' }}>
-                {settings.scale === 4 ? '4K UHD (3840×2160p)' : settings.scale === 8 ? '8K Ultra (7680×4320p)' : settings.scale === 2 ? '2K (2560×1440p)' : '1080p FHD'}
-
+                {settings.scale === 4 ? '4K UHD (3840×2160p)' : settings.scale === 8 ? '8K Ultra (7680×4320p)' : settings.scale === 2 ? '2K (2560×1440p)' : '1080p FHD'} • {settings.fps === 'original' ? 'Source FPS (60FPS)' : `${settings.fps} FPS`}
               </div>
 
               {/* Service Badges */}
@@ -452,7 +454,7 @@ export default function VideoStudio({ settings, setSettings }) {
                 <div style={{ marginTop: '0.8rem', background: '#0f172a', borderRadius: '8px', padding: '1rem', border: '1px solid rgba(var(--primary-rgb),0.3)' }}>
                   <div style={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--primary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <div className="spinner-ring" style={{ width: '12px', height: '12px', borderWidth: '2px' }} />
-                    EXECUTING AI UPSCALE PROCESS...
+                    AI UPSCALING PROCESS IN PROGRESS...
                   </div>
                   <div className="progress-bar-track" style={{ width: '100%', marginBottom: '0.4rem' }}>
                     <div className="progress-bar-fill" style={{ width: `${exportProgress}%` }} />
@@ -485,17 +487,15 @@ export default function VideoStudio({ settings, setSettings }) {
 
       {/* ============================================================
          BOTTOM SECTION: 60 FPS WEBGPU STAGE VIEWPORT & SPLIT COMPARISON
-         (Only shown during export or after AI Upscale is finished)
          ============================================================ */}
-      {(exportedUrl || isExporting) && (
-        <div className="viewport-card" style={{ marginTop: '0.5rem' }}>
-          {/* Toolbar */}
-          <div className="viewport-toolbar">
+      <div className="viewport-card" style={{ marginTop: '0.5rem' }}>
+        {/* Toolbar */}
+        <div className="viewport-toolbar">
           <div className="viewport-toolbar-left">
-            <span className="badge-webgpu">AI UPSCALE</span>
+            <span className="badge-webgpu">⚡ WEBGPU 60 FPS HIGH-DEFINITION STAGE</span>
             <span className="vt-filename">{videoName}</span>
             <span className="vt-label" style={{ color: 'var(--primary)', fontWeight: 800 }}>
-              → {settings.scale}× AI SUPER-RESOLUTION
+              → {settings.scale}× AI SUPER-RESOLUTION ({settings.fps === 'original' ? '60 FPS' : `${settings.fps} FPS`})
             </span>
           </div>
           <div className="viewport-toolbar-right">
@@ -546,7 +546,7 @@ export default function VideoStudio({ settings, setSettings }) {
               <div style={{ padding: '0.5rem 0.8rem', background: 'rgba(var(--primary-rgb),0.15)', borderBottom: '1px solid rgba(var(--primary-rgb),0.3)', fontSize: '0.65rem', fontWeight: 800, color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <span style={{ color: '#fbbf24' }}>★</span>
-                  {exportedUrl ? `RENDERED & EXPORTED ${settings.scale}× 4K VIDEO` : `UTKARSH AI ${settings.scale}× ULTRA ENHANCED`}
+                  {exportedUrl ? `RENDERED & EXPORTED ${settings.scale}× 4K VIDEO` : `UTKARSH AI ${settings.scale}× 60-120 FPS ULTRA ENHANCED`}
                 </div>
                 {exportedUrl && (
                   <a
@@ -562,10 +562,10 @@ export default function VideoStudio({ settings, setSettings }) {
               <div style={{ flex: 1, position: 'relative', minHeight: '340px' }}>
                 {exportedUrl ? (
                   <video
-                    ref={exportedVideoRef}
                     src={exportedUrl}
+                    controls
                     loop={isLooping}
-                    muted={true}
+                    autoPlay={isPlaying}
                     style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                   />
                 ) : (
@@ -605,7 +605,7 @@ export default function VideoStudio({ settings, setSettings }) {
             </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

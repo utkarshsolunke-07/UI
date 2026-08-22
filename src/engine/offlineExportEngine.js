@@ -9,7 +9,7 @@ export async function exportOfflineVideo(
   return new Promise(async (resolve, reject) => {
     let worker = null;
     try {
-      const fps = 30; // Solid 30 FPS default for reliable export without FPS drops
+      const fps = settings.fps === 'original' ? 60 : (Number(settings.fps) || 60);
       const duration = videoElementSource.duration || 10;
       const totalFrames = Math.floor(duration * fps);
       
@@ -106,6 +106,12 @@ export async function exportOfflineVideo(
         }
       };
 
+      worker.onerror = (e) => {
+        if (workerReject) {
+          const r = workerReject; workerReject = null; r(new Error(e.message || "Worker initialization failed"));
+        }
+      };
+
       // Send INIT
       await waitForWorker(() => {
         worker.postMessage({
@@ -133,14 +139,17 @@ export async function exportOfflineVideo(
           videoElementSource.currentTime = currentTime;
           
           await new Promise((res) => {
+            let timeout;
             const onSeeked = () => {
+              clearTimeout(timeout);
               videoElementSource.removeEventListener('seeked', onSeeked);
               res();
             };
-            if (videoElementSource.readyState >= 2 && Math.abs(videoElementSource.currentTime - currentTime) < 0.05) {
+            if (videoElementSource.readyState >= 2 && Math.abs(videoElementSource.currentTime - currentTime) < 0.1) {
                res();
             } else {
               videoElementSource.addEventListener('seeked', onSeeked);
+              timeout = setTimeout(onSeeked, 2000); // 2-second timeout to prevent infinite hang
             }
           });
         } else {
