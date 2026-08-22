@@ -19,11 +19,11 @@ export default function App() {
   const [statusMsg, setStatusMsg]           = useState('');
 
   const [settings, setSettings] = useState({
-    scale: 4, model: 'utkarsh_omni_absolute', aiUpscale: true,
+    scale: null, model: 'utkarsh_omni_absolute', aiUpscale: true,
     sharpness: 70, denoise: 30, hdr: 40,
     clarity: 65, faceRestore: 65, clahe: 40,
     grain: 0, format: 'png', fps: 'original', lut: 'none', temp: 0,
-    targetWidth: null, targetHeight: null,
+    targetWidth: null, targetHeight: 2160,
   });
 
   /* Apply theme to body data-theme attribute */
