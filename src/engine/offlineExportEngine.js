@@ -183,21 +183,26 @@ export async function exportOfflineVideo(
           await new Promise(r => requestAnimationFrame(r));
         }
 
-        // Grab bitmap after decode (requestAnimationFrame ensures paint)
-        const bitmap = await new Promise((res, rej) => {
-          requestAnimationFrame(async () => {
-            try {
-              const bmp = await createImageBitmap(videoElementSource, {
-                resizeWidth:   srcW,
-                resizeHeight:  srcH,
-                resizeQuality: 'high',
-              });
-              res(bmp);
-            } catch (err) {
-              rej(err);
-            }
+        // Bug2 fix: Removed requestAnimationFrame() wrapper.
+        // rAF NEVER fires when the browser tab is in the background,
+        // causing exports to hang forever. The 'seeked' event already
+        // guarantees the video frame is decoded and ready for capture.
+        let bitmap;
+        try {
+          bitmap = await createImageBitmap(videoElementSource, {
+            resizeWidth:   srcW,
+            resizeHeight:  srcH,
+            resizeQuality: 'high',
           });
-        });
+        } catch (err) {
+          // Fallback: try without resize options (older browsers)
+          try {
+            bitmap = await createImageBitmap(videoElementSource);
+          } catch (err2) {
+            console.warn(`[Export] Frame ${i} createImageBitmap failed:`, err2);
+            continue; // Skip this frame rather than crash entire export
+          }
+        }
 
         // Send frame to worker
         const timestamp = Math.round(targetTime * 1_000_000);

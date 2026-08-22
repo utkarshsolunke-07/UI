@@ -115,10 +115,10 @@ export class WebGLVideoEngine {
         float wy = lanczos(float(iy) - frac.y);
         for (int ix = -1; ix <= 2; ix++) {
           float wx = lanczos(float(ix) - frac.x);
-          float w = wx * wy;
+          float wt = wx * wy;  // Bug4 fixed: renamed w→wt to avoid shadowing outer vec4 w
           vec2 sampleUV = (fi + vec2(float(ix), float(iy)) + 0.5) / u_srcSize;
-          col += texture(u_src, clamp(sampleUV, vec2(0.0), vec2(1.0))) * w;
-          wTotal += w;
+          col += texture(u_src, clamp(sampleUV, vec2(0.0), vec2(1.0))) * wt;
+          wTotal += wt;
         }
       }
       col /= max(wTotal, 0.0001);
@@ -428,6 +428,19 @@ export class WebGLVideoEngine {
     const gl = this.gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+
+    // Bug5 fix: Verify FBO completeness — silently falls back to RGBA8 on devices
+    // that don't support RGBA16F as a render target (many mobile GPUs)
+    const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    if (status !== gl.FRAMEBUFFER_COMPLETE) {
+      console.warn(`[WebGL] FBO incomplete (status=${status.toString(16)}). Falling back to RGBA8.`);
+      this.hasFloatFBO = false;
+      // Re-upload texture as RGBA8
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    }
+
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 

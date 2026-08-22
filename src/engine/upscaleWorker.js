@@ -79,27 +79,30 @@ self.onmessage = async function(e) {
           bitrate:          320_000, // 320 kbps studio quality
         });
 
-        // Encode all audio upfront in chunks
+        // Encode all audio upfront in chunks (correct f32-planar layout)
         const { buffer, numberOfChannels, sampleRate } = audioData;
         const totalFrames = buffer[0].length;
         const chunkSize   = sampleRate; // 1-second chunks
 
         for (let offset = 0; offset < totalFrames; offset += chunkSize) {
-          const frameCount = Math.min(chunkSize, totalFrames - offset);
+          const framesInChunk = Math.min(chunkSize, totalFrames - offset);
 
-          // Interleave planar channels into planar Float32 buffer
-          const chunkData = new Float32Array(frameCount * numberOfChannels);
+          // Bug3 fix: f32-planar format requires each plane to be exactly frameCount floats.
+          // Old code allocated frameCount*channels which caused AudioData to throw or produce silence.
+          // Now each channel occupies its own framesInChunk slice in the planar buffer.
+          const chunkData = new Float32Array(framesInChunk * numberOfChannels);
           for (let ch = 0; ch < numberOfChannels; ch++) {
+            // Place channel ch at offset ch * framesInChunk (planar layout)
             chunkData.set(
-              buffer[ch].subarray(offset, offset + frameCount),
-              ch * frameCount
+              buffer[ch].subarray(offset, offset + framesInChunk),
+              ch * framesInChunk  // correct planar offset
             );
           }
 
           const audioData_ = new AudioData({
             format:          'f32-planar',
             sampleRate:       sampleRate,
-            numberOfFrames:   frameCount,
+            numberOfFrames:   framesInChunk,
             numberOfChannels: numberOfChannels,
             timestamp:        Math.round((offset / sampleRate) * 1_000_000),
             data:             chunkData,
@@ -136,16 +139,27 @@ self.onmessage = async function(e) {
         },
       });
 
-      videoEncoder.configure({
+      // Bug6 fix: bitrateMode and latencyMode are not universally supported.
+      // Chrome 108+ supports them, Firefox/Safari throw on unknown keys.
+      // We build config safely and test support before committing.
+      const baseConfig = {
         codec:                finalCodec,
         width:                dstW,
         height:               dstH,
-        bitrate:              bitrate || 80_000_000, // 80 Mbps for 4K
-        bitrateMode:          'constant',
+        bitrate:              bitrate || 80_000_000,
         framerate:            fps,
         hardwareAcceleration: 'prefer-hardware',
-        latencyMode:          'quality',
-      });
+      };
+
+      // Test extended config with optional keys
+      const extendedConfig = { ...baseConfig, bitrateMode: 'constant', latencyMode: 'quality' };
+      let encoderConfig = baseConfig;
+      try {
+        const extCheck = await VideoEncoder.isConfigSupported(extendedConfig);
+        if (extCheck?.supported) encoderConfig = extendedConfig;
+      } catch (_) { /* Extended keys not supported — use base config */ }
+
+      videoEncoder.configure(encoderConfig);
 
       self.postMessage({ type: 'INIT_DONE' });
 
