@@ -90,56 +90,42 @@
   gap: 0.75rem;
   flex-shrink: 0;
 }
-/* 3D Spinning Quantum Logo Emblem */
-.logo-3d-container {
-  width: 42px;
-  height: 42px;
-  perspective: 600px;
+/* New Utkarsh AI SVG Core Logo */
+.logo-svg-container {
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   cursor: pointer;
 }
-.cube-3d {
-  width: 30px;
-  height: 30px;
-  position: relative;
-  transform-style: preserve-3d;
-  animation: spinCube3D 10s linear infinite;
-  transition: transform 0.3s ease;
+.utkarsh-logo-svg {
+  filter: drop-shadow(0 0 12px rgba(var(--primary-rgb), 0.5));
 }
-.logo-3d-container:hover .cube-3d {
-  animation-duration: 3s;
+.ring-spin-slow {
+  transform-origin: 50% 50%;
+  animation: logoSpin 12s linear infinite;
 }
-.cube-face {
-  position: absolute;
-  width: 30px;
-  height: 30px;
-  background: rgba(var(--primary-rgb), 0.18);
-  border: 1.5px solid var(--primary);
-  box-shadow: 0 0 12px rgba(var(--primary-rgb), 0.6), inset 0 0 8px rgba(var(--primary-rgb), 0.3);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  font-weight: 900;
-  color: var(--primary);
-  border-radius: 5px;
+.ring-spin-fast {
+  transform-origin: 50% 50%;
+  animation: logoSpin 5s linear infinite reverse;
 }
-.cube-face.front  { transform: translateZ(15px); }
-.cube-face.back   { transform: rotateY(180deg) translateZ(15px); }
-.cube-face.right  { transform: rotateY(90deg) translateZ(15px); }
-.cube-face.left   { transform: rotateY(-90deg) translateZ(15px); }
-.cube-face.top    { transform: rotateX(90deg) translateZ(15px); }
-.cube-face.bottom { transform: rotateX(-90deg) translateZ(15px); }
-
-@keyframes spinCube3D {
-  0% { transform: rotateX(-20deg) rotateY(0deg) rotateZ(0deg); }
-  50% { transform: rotateX(25deg) rotateY(180deg) rotateZ(10deg); }
-  100% { transform: rotateX(-20deg) rotateY(360deg) rotateZ(0deg); }
+.hex-pulse {
+  transform-origin: 50% 50%;
+  animation: hexPulse 3s ease-in-out infinite alternate;
+}
+.core-blink {
+  animation: coreBlink 2s ease-in-out infinite alternate;
+}
+@keyframes logoSpin {
+  100% { transform: rotate(360deg); }
+}
+@keyframes hexPulse {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  100% { transform: scale(1.05); opacity: 1; }
+}
+@keyframes coreBlink {
+  0%, 100% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 4px #fbbf24); }
+  50% { opacity: 0.4; transform: scale(0.8); filter: drop-shadow(0 0 0px #fbbf24); }
 }
 .brand-name {
   font-size: 0.95rem;
