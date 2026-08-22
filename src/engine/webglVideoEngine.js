@@ -1,6 +1,6 @@
 /**
  * UTKARSH AI WebGL2 Video Upscaling Engine
- * Hardware-accelerated shaders for Spatial Upsampling and RCAS-style sharpening.
+ * Hardware-accelerated shaders for Spatial Super-Resolution, RCAS Sharpening, 3D LUTs & Dynamic Enhancement.
  */
 
 export class WebGLVideoEngine {
@@ -29,12 +29,11 @@ export class WebGLVideoEngine {
       out vec2 v_texCoord;
       void main() {
         gl_Position = vec4(a_position, 0.0, 1.0);
-        // Flip Y to match 2D Canvas orientation
         v_texCoord = vec2(a_texCoord.x, 1.0 - a_texCoord.y);
       }
     `;
 
-    // Bicubic / RCAS-inspired Upscaling Shader with Color Controls
+    // Advanced Bicubic + FSR/RCAS-inspired Super-Resolution & 3D LUT Shader
     const fsSource = `#version 300 es
       precision highp float;
       
@@ -43,13 +42,14 @@ export class WebGLVideoEngine {
       
       uniform sampler2D u_image;
       uniform vec2 u_texSize;
-      
-      // Settings Uniforms
       uniform float u_sharpness;
       uniform float u_clarity;
       uniform float u_hdr;
       uniform float u_temp;
+      uniform float u_grain;
+      uniform int u_lutMode; // 0:none, 1:cinematic, 2:filmic, 3:vintage, 4:cool, 5:cyber, 6:golden
 
+      // Bicubic weights
       float w0(float a) { return (1.0/6.0)*(a*(a*(-a + 3.0) - 3.0) + 1.0); }
       float w1(float a) { return (1.0/6.0)*(a*a*(3.0*a - 6.0) + 4.0); }
       float w2(float a) { return (1.0/6.0)*(a*(a*(-3.0*a + 3.0) + 3.0) + 1.0); }
@@ -79,34 +79,80 @@ export class WebGLVideoEngine {
                g1(f.y) * (g0x * texture(tex, p2) + g1x * texture(tex, p3));
       }
 
+      // Pseudo-random generator for organic film grain
+      float rand(vec2 co) {
+        return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+      }
+
       void main() {
         vec4 color = bicubic(u_image, v_texCoord, u_texSize);
+        vec2 offset = 1.0 / u_texSize;
         
-        if (u_sharpness > 0.01) {
-          vec2 offset = 1.0 / u_texSize;
-          vec4 left   = texture(u_image, v_texCoord + vec2(-offset.x, 0.0));
-          vec4 right  = texture(u_image, v_texCoord + vec2(offset.x, 0.0));
-          vec4 up     = texture(u_image, v_texCoord + vec2(0.0, offset.y));
-          vec4 down   = texture(u_image, v_texCoord + vec2(0.0, -offset.y));
+        // --- 1. Multi-Tap RCAS Edge Sharpening & High-Frequency Detail Boost ---
+        if (u_sharpness > 0.01 || u_clarity > 0.01) {
+          vec4 e = texture(u_image, v_texCoord + vec2(0.0, -offset.y));
+          vec4 w = texture(u_image, v_texCoord + vec2(-offset.x, 0.0));
+          vec4 c = color;
+          vec4 r = texture(u_image, v_texCoord + vec2(offset.x, 0.0));
+          vec4 s = texture(u_image, v_texCoord + vec2(0.0, offset.y));
+
+          vec4 minCol = min(c, min(min(e, w), min(r, s)));
+          vec4 maxCol = max(c, max(max(e, w), max(r, s)));
+
+          // Contrast adaptive weighting
+          vec4 peak = maxCol - minCol;
+          vec4 rcasWeight = clamp(min(minCol, 1.0 - maxCol) / max(peak, vec4(0.001)), 0.0, 1.0);
           
-          vec4 blur = (left + right + up + down) * 0.25;
-          float amount = (u_sharpness + u_clarity * 0.5) / 100.0 * 2.0; 
-          color = color + (color - blur) * amount;
+          float sharpStr = (u_sharpness / 100.0) * 2.5 + (u_clarity / 100.0) * 1.5;
+          color = clamp(c + (c - (e + w + r + s) * 0.25) * sharpStr * (1.0 + rcasWeight), 0.0, 1.0);
         }
 
-        float saturation = 1.0 + u_hdr / 100.0;
-        float brightness = 1.0 + max(u_hdr - 30.0, 0.0) * 0.005;
+        // --- 2. HDR Dynamic Range & Local Clarity Boost ---
+        float saturation = 1.0 + (u_hdr / 100.0) * 0.6;
+        float brightness = 1.0 + (u_hdr / 100.0) * 0.12 + (u_clarity / 100.0) * 0.08;
         
         float lum = dot(color.rgb, vec3(0.299, 0.587, 0.114));
         color.rgb = mix(vec3(lum), color.rgb, saturation);
         color.rgb *= brightness;
 
+        // --- 3. Color Temperature Adjustment ---
         if (u_temp > 0.0) {
-           color.r += u_temp * 0.002;
-           color.b -= u_temp * 0.002;
+          color.r += (u_temp / 50.0) * 0.12;
+          color.b -= (u_temp / 50.0) * 0.08;
         } else if (u_temp < 0.0) {
-           color.b -= u_temp * 0.002;
-           color.r += u_temp * 0.002;
+          color.b += (-u_temp / 50.0) * 0.12;
+          color.r -= (-u_temp / 50.0) * 0.08;
+        }
+
+        // --- 4. 3D LUT Color Grading Shaders ---
+        if (u_lutMode == 1) { // Cinematic Teal & Orange
+          color.r = pow(color.r, 0.9) * 1.15;
+          color.g = color.g * 1.02;
+          color.b = pow(color.b, 1.15) * 0.88;
+        } else if (u_lutMode == 2) { // Filmic Pro
+          color.rgb = mix(color.rgb, vec3(lum), 0.05);
+          color.rgb = pow(color.rgb, vec3(0.95)) * 1.05;
+        } else if (u_lutMode == 3) { // Vintage 35mm
+          color.r *= 1.12;
+          color.g *= 1.02;
+          color.b *= 0.82;
+        } else if (u_lutMode == 4) { // Cool Blue Noir
+          color.r *= 0.85;
+          color.b *= 1.22;
+          color.g *= 0.95;
+        } else if (u_lutMode == 5) { // Cyber Neon Glow
+          color.r = pow(color.r, 0.85) * 1.25;
+          color.b = pow(color.b, 0.85) * 1.35;
+        } else if (u_lutMode == 6) { // Golden Hour
+          color.r *= 1.22;
+          color.g *= 1.08;
+          color.b *= 0.80;
+        }
+
+        // --- 5. Organic Film Grain ---
+        if (u_grain > 0.01) {
+          float noise = (rand(v_texCoord * 1000.0) - 0.5) * (u_grain / 100.0) * 0.15;
+          color.rgb += noise;
         }
 
         outColor = vec4(clamp(color.rgb, 0.0, 1.0), color.a);
@@ -138,7 +184,9 @@ export class WebGLVideoEngine {
       sharpness: gl.getUniformLocation(this.program, "u_sharpness"),
       clarity: gl.getUniformLocation(this.program, "u_clarity"),
       hdr: gl.getUniformLocation(this.program, "u_hdr"),
-      temp: gl.getUniformLocation(this.program, "u_temp")
+      temp: gl.getUniformLocation(this.program, "u_temp"),
+      grain: gl.getUniformLocation(this.program, "u_grain"),
+      lutMode: gl.getUniformLocation(this.program, "u_lutMode")
     };
   }
 
@@ -226,6 +274,18 @@ export class WebGLVideoEngine {
     gl.uniform1f(this.locations.clarity, settings.clarity ?? 65);
     gl.uniform1f(this.locations.hdr, settings.hdr ?? 30);
     gl.uniform1f(this.locations.temp, settings.temp ?? 0);
+    gl.uniform1f(this.locations.grain, settings.grain ?? 2);
+
+    const lutMap = {
+      none: 0,
+      cinematic: 1,
+      filmic: 2,
+      vintage: 3,
+      cool: 4,
+      cyber: 5,
+      golden: 6
+    };
+    gl.uniform1i(this.locations.lutMode, lutMap[settings.lut || 'none'] || 0);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }

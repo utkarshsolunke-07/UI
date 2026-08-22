@@ -13,8 +13,27 @@ export async function exportOfflineVideo(
       const duration = videoElementSource.duration || 10;
       const totalFrames = Math.floor(duration * fps);
       
-      const dstW = canvas.width;
-      const dstH = canvas.height;
+      const srcW = videoElementSource.videoWidth || videoElementSource.width || 480;
+      const srcH = videoElementSource.videoHeight || videoElementSource.height || 270;
+      const aspect = (srcW && srcH) ? (srcW / srcH) : (16 / 9);
+
+      let dstW = 3840;
+      let dstH = 2160;
+
+      if (settings.targetWidth && settings.targetHeight) {
+        dstW = settings.targetWidth;
+        dstH = settings.targetHeight;
+      } else {
+        const scale = settings.scale || 4;
+        if (scale === 1.5) { dstW = 1920; dstH = Math.round(1920 / aspect); }
+        else if (scale === 2) { dstW = 2560; dstH = Math.round(2560 / aspect); }
+        else if (scale === 4) { dstW = 3840; dstH = Math.round(3840 / aspect); }
+        else if (scale === 8) { dstW = 7680; dstH = Math.round(7680 / aspect); }
+        else { dstW = Math.round(srcW * scale); dstH = Math.round(srcH * scale); }
+      }
+
+      dstW = dstW % 2 === 0 ? dstW : dstW + 1;
+      dstH = dstH % 2 === 0 ? dstH : dstH + 1;
       
       // Probe codec support
       const candidateCodecs = [
