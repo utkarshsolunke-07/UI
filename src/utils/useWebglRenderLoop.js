@@ -31,9 +31,21 @@ export function useWebglRenderLoop({
         }
       }
 
+      const src = isSample ? sampleRef.current?.canvas : videoRef.current;
+      if (!src) {
+        animIdRef.current = requestAnimationFrame(render);
+        return;
+      }
+
+      // Ensure HTMLVideoElement is ready before drawing to prevent WebGL crashes
+      if (src instanceof HTMLVideoElement && src.readyState < 2) {
+        animIdRef.current = requestAnimationFrame(render);
+        return;
+      }
+
       const scale = settings.scale || 4;
-      const srcW = isSample ? 480 : (videoRef.current?.videoWidth || 480);
-      const srcH = isSample ? 270 : (videoRef.current?.videoHeight || 270);
+      const srcW = isSample ? 480 : (src.videoWidth || 480);
+      const srcH = isSample ? 270 : (src.videoHeight || 270);
       const aspect = (srcW && srcH) ? (srcW / srcH) : (16 / 9);
 
       // Force TRUE Target Pixel Dimensions
@@ -58,8 +70,6 @@ export function useWebglRenderLoop({
           webglEngineRef.current.gl.viewport(0, 0, dstW, dstH);
         }
       }
-
-      const src = isSample ? sampleRef.current?.canvas : videoRef.current;
 
       /* 1. Render RAW Canvas (Left Layer) */
       if (rawCanvas && src) {

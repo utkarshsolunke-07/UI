@@ -133,22 +133,38 @@ export default function VideoStudio({ settings, setSettings }) {
 
   /* Video Controls */
   const togglePlay = () => {
-    if (isSample) { setIsPlaying(p => !p); return; }
-    if (videoRef.current) {
-      isPlaying ? videoRef.current.pause() : videoRef.current.play();
+    if (isSample) {
       setIsPlaying(p => !p);
+      return;
+    }
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        videoRef.current.play()
+          .then(() => setIsPlaying(true))
+          .catch(err => {
+            console.warn('Video playback interrupted:', err);
+            setIsPlaying(false);
+          });
+      }
     }
   };
 
   const handleSeek = (e) => {
     const v = Number(e.target.value);
     setCurrentTime(v);
-    if (videoRef.current) videoRef.current.currentTime = v;
+    if (!isSample && videoRef.current) {
+      videoRef.current.currentTime = v;
+    }
   };
 
   const handleSpeed = (s) => {
     setPlaybackSpeed(s);
-    if (videoRef.current) videoRef.current.playbackRate = s;
+    if (!isSample && videoRef.current) {
+      videoRef.current.playbackRate = s;
+    }
   };
 
   const captureFrame = () => {
@@ -364,21 +380,37 @@ export default function VideoStudio({ settings, setSettings }) {
           </div>
         </div>
 
-        {/* ── CARD 3: Video Export CTA & Actions ── */}
+        {/* ── CARD 3: AI UPSCALE ENGINE MECHANISM & SERVICES ── */}
         <div className="panel-card">
           <div className="panel-header">
             <svg className="panel-header-icon" viewBox="0 0 24 24" fill="currentColor"><path d={ICO.flame}/></svg>
-            <span className="panel-title">RENDER & EXPORT STUDIO</span>
+            <span className="panel-title">AI UPSCALE</span>
           </div>
 
           <div className="panel-body" style={{ gap: '0.8rem' }}>
-            {/* Primary Render & Export Button at Top */}
-            <div style={{ background: 'linear-gradient(135deg, rgba(var(--primary-rgb),0.15), rgba(var(--secondary-rgb),0.08))', border: '1px solid rgba(var(--primary-rgb),0.35)', borderRadius: '12px', padding: '0.85rem', textAlign: 'center' }}>
-              <div style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.1em', marginBottom: '0.4rem' }}>
-                EXPORT SPECIFICATIONS
+            {/* Primary AI Upscale Specifications & Service Banner */}
+            <div style={{ background: 'linear-gradient(135deg, rgba(var(--primary-rgb),0.18), rgba(var(--secondary-rgb),0.08))', border: '1px solid rgba(var(--primary-rgb),0.35)', borderRadius: '12px', padding: '0.85rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.1em', marginBottom: '0.3rem' }}>
+                AI UPSCALE MECHANISM & SERVICES
               </div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text)', fontWeight: 700, marginBottom: '0.75rem' }}>
-                {settings.scale === 4 ? '4K UHD (3840×2160p)' : settings.scale === 8 ? '8K Ultra (7680×4320p)' : settings.scale === 2 ? '2K (2560×1440p)' : '1080p FHD'} • {settings.fps === 'original' ? 'Original Source FPS' : `${settings.fps} FPS`}
+              <div style={{ fontSize: '0.72rem', color: 'var(--text)', fontWeight: 800, marginBottom: '0.6rem' }}>
+                {settings.scale === 4 ? '4K UHD (3840×2160p)' : settings.scale === 8 ? '8K Ultra (7680×4320p)' : settings.scale === 2 ? '2K (2560×1440p)' : '1080p FHD'} • {settings.fps === 'original' ? 'Source FPS (60FPS)' : `${settings.fps} FPS`}
+              </div>
+
+              {/* Service Badges */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.75rem', fontSize: '0.62rem', textAlign: 'left', background: 'rgba(0,0,0,0.3)', padding: '0.5rem 0.6rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
+                  <span>Neural Frame Synthesizer</span>
+                  <span style={{ color: '#4ade80', fontWeight: 800 }}>● ONLINE (v30.0)</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
+                  <span>WebGPU Super-Res Service</span>
+                  <span style={{ color: '#38bdf8', fontWeight: 800 }}>⚡ ACTIVE</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
+                  <span>RCAS Edge Sharpen Matrix</span>
+                  <span style={{ color: '#facc15', fontWeight: 800 }}>LOADED</span>
+                </div>
               </div>
 
               {exportedUrl ? (
@@ -394,22 +426,14 @@ export default function VideoStudio({ settings, setSettings }) {
                   </a>
                   <button className="btn-ghost" onClick={handleExport} disabled={isExporting} style={{ fontSize: '0.68rem' }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d={ICO.flame}/></svg>
-                    Re-render Video
+                    Re-run AI Upscale Engine
                   </button>
                 </div>
               ) : (
-                <>
-                  {!isSample ? (
-                    <button className="btn-primary" onClick={handleExport} disabled={isExporting}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d={ICO.flame}/></svg>
-                      {isExporting ? `EXPORTING… ${exportProgress}%` : 'RENDER & EXPORT OMNI 4K'}
-                    </button>
-                  ) : (
-                    <button className="btn-secondary" style={{ opacity: 0.6, cursor: 'not-allowed' }} disabled>
-                      UPLOAD A CUSTOM VIDEO TO EXPORT
-                    </button>
-                  )}
-                </>
+                <button className="btn-primary" onClick={handleExport} disabled={isExporting} style={{ padding: '0.75rem 1rem' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d={ICO.flame}/></svg>
+                  {isExporting ? `AI UPSCALE RUNNING… ${exportProgress}%` : `START AI UPSCALE PROCESS (${settings.scale}×)`}
+                </button>
               )}
               
               {isExporting && (
