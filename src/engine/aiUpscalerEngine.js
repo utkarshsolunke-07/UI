@@ -21,6 +21,32 @@ export const AI_MODELS = {
     defaultSharpness: 70, defaultDenoise: 30, defaultHdr: 40,
     defaultClarity: 65, defaultFaceRestore: 65, defaultClahe: 40, defaultGrain: 2,
   },
+  utkarsh_omni: {
+    id: 'utkarsh_omni',
+    name: 'UTKARSH OMNI-FUSION ENGINE v30.0',
+    description: 'Master SOTA Unified Multi-Pass Fusion Engine',
+    badge: '★ UTKARSH OMNI-FUSION ENGINE',
+  },
+  proteus: {
+    id: 'proteus',
+    name: 'Utkarsh Proteus Profile (Photos & Faces)',
+    description: 'Specialized profile for photo and face restoration',
+  },
+  cugan: {
+    id: 'cugan',
+    name: 'Utkarsh CUGAN Profile (Anime & 2D Art)',
+    description: 'Specialized profile for anime and 2D illustrations',
+  },
+  dione: {
+    id: 'dione',
+    name: 'Utkarsh Dione Profile (Video & Interlaced Tapes)',
+    description: 'De-interlacing and VHS restoration profile',
+  },
+  realesrgan: {
+    id: 'realesrgan',
+    name: 'Utkarsh ESRGAN Profile (Landscapes & Graphics)',
+    description: 'Landscape and high-frequency graphics profile',
+  },
 };
 
 export const MASTER_PROMPTS = {

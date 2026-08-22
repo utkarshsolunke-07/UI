@@ -33,10 +33,17 @@ export default function BatchQueue({ globalSettings }) {
   };
 
   const removeItem = (id) => {
-    setQueue((prev) => prev.filter((item) => item.id !== id));
+    setQueue((prev) => {
+      const item = prev.find((i) => i.id === id);
+      if (item?.originalUrl) URL.revokeObjectURL(item.originalUrl);
+      return prev.filter((item) => item.id !== id);
+    });
   };
 
   const clearQueue = () => {
+    queue.forEach((item) => {
+      if (item.originalUrl) URL.revokeObjectURL(item.originalUrl);
+    });
     setQueue([]);
   };
 
