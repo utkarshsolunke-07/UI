@@ -58,6 +58,15 @@ export function useWebglRenderLoop({
       else if (scale === 8) { dstW = 7680; dstH = Math.round(7680 / aspect); }
       else { dstW = Math.round(srcW * scale); dstH = Math.round(srcH * scale); }
 
+      // PREVIEW FPS OPTIMIZATION: Cap UI Canvas to 1080p max to prevent browser lag.
+      // The true 4K/8K resolution is exclusively used in the offlineExportEngine worker!
+      const maxPreviewWidth = 1920;
+      if (dstW > maxPreviewWidth) {
+        const ratio = maxPreviewWidth / dstW;
+        dstW = maxPreviewWidth;
+        dstH = Math.round(dstH * ratio);
+      }
+
       // Force even numbers for VideoEncoder compatibility
       dstW = dstW % 2 === 0 ? dstW : dstW + 1;
       dstH = dstH % 2 === 0 ? dstH : dstH + 1;

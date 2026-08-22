@@ -37,8 +37,10 @@ export async function exportOfflineVideo(
       
       // Probe codec support
       const candidateCodecs = [
-        'avc1.64003E', 'avc1.640034', 'avc1.640033',
-        'avc1.4d0034', 'avc1.42E01F', 'avc1.42001E'
+        'vp09.00.51.08', // VP9 4K/8K High tier
+        'avc1.640034',   // H264 High Profile 5.2
+        'avc1.4d0034',   // H264 Main
+        'avc1.42001E'    // H264 Baseline
       ];
       let codec = 'avc1.42001E';
       for (const c of candidateCodecs) {
@@ -136,8 +138,6 @@ export async function exportOfflineVideo(
         const currentTime = i / fps;
         
         if ('currentTime' in videoElementSource) {
-          videoElementSource.currentTime = currentTime;
-          
           await new Promise((res) => {
             let timeout;
             const onSeeked = () => {
@@ -145,12 +145,9 @@ export async function exportOfflineVideo(
               videoElementSource.removeEventListener('seeked', onSeeked);
               res();
             };
-            if (videoElementSource.readyState >= 2 && Math.abs(videoElementSource.currentTime - currentTime) < 0.1) {
-               res();
-            } else {
-              videoElementSource.addEventListener('seeked', onSeeked);
-              timeout = setTimeout(onSeeked, 2000); // 2-second timeout to prevent infinite hang
-            }
+            videoElementSource.addEventListener('seeked', onSeeked);
+            videoElementSource.currentTime = currentTime;
+            timeout = setTimeout(onSeeked, 1000); // 1-second fallback timeout
           });
         } else {
           await new Promise(r => setTimeout(r, 1000 / fps)); // Synthetic fallback
