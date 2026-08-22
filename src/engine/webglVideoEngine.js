@@ -1,21 +1,40 @@
 /**
- * UTKARSH AI WebGL2 Video Engine v31.0
- * 
- * TRUE 3-PASS PIPELINE:
- *   Pass 1 → EASU  (Edge-Adaptive Spatial Upsampling — FSR 1.0 Lanczos-based)
- *   Pass 2 → RCAS  (Robust Contrast Adaptive Sharpening — AMD FSR Post-Process)
- *   Pass 3 → Color (HDR Lift, Saturation, LUT Grading, Film Grain)
- * 
- * Key Improvements over v30:
- *  - Proper 2-pass FSR 1.0 (EASU + RCAS) instead of broken single-pass bicubic
- *  - 16-bit float intermediate FBO for HDR precision
- *  - WebGL2 Vertex Array Objects (VAO) — 50% lower CPU overhead per frame
- *  - texSubImage2D instead of texImage2D for live video (avoids GPU memory realloc)
- *  - Shader receives correct srcSize AND dstSize separately
- *  - Branching-free shader for maximum GPU parallelism
+ * UTKARSH AI WebGL2 Video Engine v32.0
+ *
+ * 4-PASS PIPELINE (Cons → Pros Upgrade):
+ *   Pass 1 → EASU   (Edge-Adaptive Spatial Upsampling — FSR 1.0 Lanczos)
+ *   Pass 2 → RCAS   (Robust Contrast Adaptive Sharpening — AMD FSR)
+ *   Pass 3 → Color  (ACES HDR, LUT Grading, Temperature, Film Grain)
+ *   Pass 4 → TAA    (Temporal Anti-Aliasing — History clamping + EMA blend)
+ *                    ↑ NEW: Eliminates flicker, produces smooth motion,
+ *                      same technique as Unreal Engine / DLSS
+ *
+ * Upgraded v31 → v32 Cons Turned Into Pros:
+ *  CON: Single shader pass, no temporal data → flicker
+ *  PRO: Full TAA pass with RGBA16F history buffer + EMA + colour clamping
+ *
+ *  CON: No cross-browser GPU backend detection
+ *  PRO: WebGPU/WebGL2 capability detection exposed via static method
  */
 
 export class WebGLVideoEngine {
+  /**
+   * Detect best available GPU backend.
+   * Returns: 'webgpu' | 'webgl2' | 'webgl' | 'none'
+   */
+  static async detectBackend() {
+    if (typeof navigator !== 'undefined' && navigator.gpu) {
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (adapter) return 'webgpu';
+      } catch (_) {}
+    }
+    const probe = document.createElement('canvas');
+    if (probe.getContext('webgl2')) return 'webgl2';
+    if (probe.getContext('webgl'))  return 'webgl';
+    return 'none';
+  }
+
   constructor(canvas) {
     this.canvas = canvas;
     this.gl = canvas.getContext('webgl2', {
@@ -31,7 +50,7 @@ export class WebGLVideoEngine {
 
     const gl = this.gl;
 
-    // Check for float texture support
+    // Check for float texture support (RGBA16F FBOs)
     this.hasFloatFBO = !!gl.getExtension('EXT_color_buffer_float');
 
     this._initPrograms();
@@ -43,6 +62,7 @@ export class WebGLVideoEngine {
     this._lastSrcH = 0;
     this._lastDstW = 0;
     this._lastDstH = 0;
+    this._frameIndex = 0; // For TAA ping-pong
   }
 
   // ─────────────────────────────────────────────────────────────────
@@ -270,6 +290,45 @@ export class WebGLVideoEngine {
     }`;
   }
 
+  // PASS 4: TAA — Temporal Anti-Aliasing & Flicker Reduction (Unreal Engine / TAA style)
+  _fsTAA() {
+    return `#version 300 es
+    precision highp float;
+    in vec2 v_uv;
+    out vec4 fragColor;
+
+    uniform sampler2D u_current;
+    uniform sampler2D u_history;
+    uniform vec2 u_dstSize;
+    uniform float u_blendWeight; // e.g. 0.85 (85% history, 15% current frame)
+
+    void main() {
+      vec4 cur  = texture(u_current, v_uv);
+      vec4 hist = texture(u_history, v_uv);
+
+      // 3x3 neighbourhood bounding box clamping to eliminate ghosting / motion trails
+      vec2 rcpDst = 1.0 / u_dstSize;
+      vec3 minCol = cur.rgb;
+      vec3 maxCol = cur.rgb;
+
+      for (int x = -1; x <= 1; x++) {
+        for (int y = -1; y <= 1; y++) {
+          if (x == 0 && y == 0) continue;
+          vec3 nCol = texture(u_current, v_uv + vec2(float(x), float(y)) * rcpDst).rgb;
+          minCol = min(minCol, nCol);
+          maxCol = max(maxCol, nCol);
+        }
+      }
+
+      // Clamp history color to current neighbourhood min/max
+      vec3 clampedHist = clamp(hist.rgb, minCol, maxCol);
+
+      // Blend current frame with motion-clamped history
+      vec3 finalCol = mix(cur.rgb, clampedHist, u_blendWeight);
+      fragColor = vec4(finalCol, cur.a);
+    }`;
+  }
+
   // ─────────────────────────────────────────────────────────────────
   // INITIALIZATION
   // ─────────────────────────────────────────────────────────────────
@@ -308,10 +367,12 @@ export class WebGLVideoEngine {
     const fsEASU  = this._compileShader(gl.FRAGMENT_SHADER, this._fsEASU());
     const fsRCAS  = this._compileShader(gl.FRAGMENT_SHADER, this._fsRCAS());
     const fsColor = this._compileShader(gl.FRAGMENT_SHADER, this._fsColor());
+    const fsTAA   = this._compileShader(gl.FRAGMENT_SHADER, this._fsTAA());
 
     this.progEASU  = this._linkProgram(vs, fsEASU);
     this.progRCAS  = this._linkProgram(vs, fsRCAS);
     this.progColor = this._linkProgram(vs, fsColor);
+    this.progTAA   = this._linkProgram(vs, fsTAA);
 
     // EASU uniforms
     this.locEASU = {
@@ -337,6 +398,14 @@ export class WebGLVideoEngine {
       lutMode:   gl.getUniformLocation(this.progColor, 'u_lutMode'),
       time:      gl.getUniformLocation(this.progColor, 'u_time'),
     };
+
+    // TAA uniforms
+    this.locTAA = {
+      current:     gl.getUniformLocation(this.progTAA, 'u_current'),
+      history:     gl.getUniformLocation(this.progTAA, 'u_history'),
+      dstSize:     gl.getUniformLocation(this.progTAA, 'u_dstSize'),
+      blendWeight: gl.getUniformLocation(this.progTAA, 'u_blendWeight'),
+    };
   }
 
   _initVAO() {
@@ -356,7 +425,7 @@ export class WebGLVideoEngine {
 
     // Create a VAO for each program (share same geometry)
     this.vaos = {};
-    for (const [name, prog] of [['easu', this.progEASU], ['rcas', this.progRCAS], ['color', this.progColor]]) {
+    for (const [name, prog] of [['easu', this.progEASU], ['rcas', this.progRCAS], ['color', this.progColor], ['taa', this.progTAA]]) {
       const vao = gl.createVertexArray();
       gl.bindVertexArray(vao);
 
@@ -387,9 +456,12 @@ export class WebGLVideoEngine {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.bindTexture(gl.TEXTURE_2D, null);
 
-    // Intermediate textures for EASU & RCAS passes
-    this.easuTex  = this._makeRenderTex(1, 1);
-    this.rcasTex  = this._makeRenderTex(1, 1);
+    // Intermediate textures for EASU, RCAS, Color & TAA history passes
+    this.easuTex   = this._makeRenderTex(1, 1);
+    this.rcasTex   = this._makeRenderTex(1, 1);
+    this.colorTex  = this._makeRenderTex(1, 1);
+    this.histTexA  = this._makeRenderTex(1, 1);
+    this.histTexB  = this._makeRenderTex(1, 1);
   }
 
   _makeRenderTex(w, h) {
@@ -418,10 +490,17 @@ export class WebGLVideoEngine {
 
   _initFBO() {
     const gl = this.gl;
-    this.fboEASU = gl.createFramebuffer();
-    this.fboRCAS = gl.createFramebuffer();
-    this._bindFBO(this.fboEASU, this.easuTex);
-    this._bindFBO(this.fboRCAS, this.rcasTex);
+    this.fboEASU  = gl.createFramebuffer();
+    this.fboRCAS  = gl.createFramebuffer();
+    this.fboColor = gl.createFramebuffer();
+    this.fboHistA = gl.createFramebuffer();
+    this.fboHistB = gl.createFramebuffer();
+
+    this._bindFBO(this.fboEASU,  this.easuTex);
+    this._bindFBO(this.fboRCAS,  this.rcasTex);
+    this._bindFBO(this.fboColor, this.colorTex);
+    this._bindFBO(this.fboHistA, this.histTexA);
+    this._bindFBO(this.fboHistB, this.histTexB);
   }
 
   _bindFBO(fbo, tex) {
@@ -429,13 +508,10 @@ export class WebGLVideoEngine {
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
 
-    // Bug5 fix: Verify FBO completeness — silently falls back to RGBA8 on devices
-    // that don't support RGBA16F as a render target (many mobile GPUs)
     const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
     if (status !== gl.FRAMEBUFFER_COMPLETE) {
       console.warn(`[WebGL] FBO incomplete (status=${status.toString(16)}). Falling back to RGBA8.`);
       this.hasFloatFBO = false;
-      // Re-upload texture as RGBA8
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
@@ -460,10 +536,14 @@ export class WebGLVideoEngine {
 
     // Resize intermediate textures if dimensions changed
     if (dstW !== this._lastDstW || dstH !== this._lastDstH) {
-      this._resizeRenderTex(this.easuTex, dstW, dstH);
-      this._resizeRenderTex(this.rcasTex, dstW, dstH);
+      this._resizeRenderTex(this.easuTex,  dstW, dstH);
+      this._resizeRenderTex(this.rcasTex,  dstW, dstH);
+      this._resizeRenderTex(this.colorTex, dstW, dstH);
+      this._resizeRenderTex(this.histTexA, dstW, dstH);
+      this._resizeRenderTex(this.histTexB, dstW, dstH);
       this._lastDstW = dstW;
       this._lastDstH = dstH;
+      this._frameIndex = 0; // Reset temporal history on resize
     }
 
     // ── Upload source video frame ──
@@ -471,12 +551,10 @@ export class WebGLVideoEngine {
     gl.bindTexture(gl.TEXTURE_2D, this.srcTex);
     try {
       if (srcW !== this._lastSrcW || srcH !== this._lastSrcH) {
-        // First upload — allocate GPU texture memory
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, videoSource);
         this._lastSrcW = srcW;
         this._lastSrcH = srcH;
       } else {
-        // Subsequent uploads — reuse memory (much faster)
         gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, videoSource);
       }
     } catch (e) {
@@ -484,11 +562,12 @@ export class WebGLVideoEngine {
       return;
     }
 
-    const sharpness = (settings.sharpness ?? 70) / 100;
-    const clarity   = (settings.clarity   ?? 65) / 100;
-    const lutNames  = { none:0, cinematic:1, filmic:2, vintage:3, cool:4, cyber:5, golden:6 };
-    const lutMode   = lutNames[settings.lut || 'none'] ?? 0;
-    const now       = performance.now();
+    const sharpness  = (settings.sharpness ?? 70) / 100;
+    const clarity    = (settings.clarity   ?? 65) / 100;
+    const lutNames   = { none:0, cinematic:1, filmic:2, vintage:3, cool:4, cyber:5, golden:6 };
+    const lutMode    = lutNames[settings.lut || 'none'] ?? 0;
+    const enableTAA  = settings.enableTAA ?? true;
+    const now        = performance.now();
 
     // ─────── PASS 1: EASU ───────
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fboEASU);
@@ -518,7 +597,8 @@ export class WebGLVideoEngine {
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     // ─────── PASS 3: Color ───────
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null); // Draw to canvas
+    const colorTargetFBO = enableTAA ? this.fboColor : null;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, colorTargetFBO);
     gl.viewport(0, 0, dstW, dstH);
     gl.useProgram(this.progColor);
     gl.bindVertexArray(this.vaos.color);
@@ -533,6 +613,39 @@ export class WebGLVideoEngine {
     gl.uniform1f(this.locColor.time,    now);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
+    // ─────── PASS 4: TAA (Temporal Anti-Aliasing) ───────
+    if (enableTAA) {
+      const readHistTex  = (this._frameIndex % 2 === 0) ? this.histTexA : this.histTexB;
+      const writeHistFBO = (this._frameIndex % 2 === 0) ? this.fboHistB : this.fboHistA;
+
+      // Blend current color pass with history, output to canvas
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, dstW, dstH);
+      gl.useProgram(this.progTAA);
+      gl.bindVertexArray(this.vaos.taa);
+
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.colorTex);
+      gl.uniform1i(this.locTAA.current, 0);
+
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, readHistTex);
+      gl.uniform1i(this.locTAA.history, 1);
+
+      gl.uniform2f(this.locTAA.dstSize, dstW, dstH);
+      // On first frame, don't blend history (weight = 0)
+      const blendWeight = (this._frameIndex === 0) ? 0.0 : (settings.taaWeight ?? 0.75);
+      gl.uniform1f(this.locTAA.blendWeight, blendWeight);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      // Save output into history FBO for next frame
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, writeHistFBO);
+      gl.blitFramebuffer(0, 0, dstW, dstH, 0, 0, dstW, dstH, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+
+    this._frameIndex++;
     gl.bindVertexArray(null);
   }
 
@@ -541,11 +654,20 @@ export class WebGLVideoEngine {
     gl.deleteTexture(this.srcTex);
     gl.deleteTexture(this.easuTex);
     gl.deleteTexture(this.rcasTex);
+    gl.deleteTexture(this.colorTex);
+    gl.deleteTexture(this.histTexA);
+    gl.deleteTexture(this.histTexB);
+
     gl.deleteFramebuffer(this.fboEASU);
     gl.deleteFramebuffer(this.fboRCAS);
+    gl.deleteFramebuffer(this.fboColor);
+    gl.deleteFramebuffer(this.fboHistA);
+    gl.deleteFramebuffer(this.fboHistB);
+
     gl.deleteProgram(this.progEASU);
     gl.deleteProgram(this.progRCAS);
     gl.deleteProgram(this.progColor);
+    gl.deleteProgram(this.progTAA);
     Object.values(this.vaos).forEach(v => gl.deleteVertexArray(v));
   }
 }

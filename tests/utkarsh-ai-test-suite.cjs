@@ -92,9 +92,18 @@ console.log('\n📦 GROUP 2: WebGL Shader Integrity Tests');
 test('WebGL2 context requested (not WebGL1)', () => {
   assert(webglEngine.includes("'webgl2'"), 'WebGL2 context not requested');
 });
-test('Three shader programs present (EASU, RCAS, Color)', () => {
-  assert(webglEngine.includes('progEASU') && webglEngine.includes('progRCAS') && webglEngine.includes('progColor'),
-    'Missing one or more shader programs');
+test('Four shader programs present (EASU, RCAS, Color, TAA)', () => {
+  assert(webglEngine.includes('progEASU') && webglEngine.includes('progRCAS') && webglEngine.includes('progColor') && webglEngine.includes('progTAA'),
+    'Missing one or more shader programs in 4-pass engine');
+});
+test('TAA Temporal Anti-Aliasing shader present (_fsTAA)', () => {
+  assert(webglEngine.includes('_fsTAA()'), 'TAA shader method _fsTAA missing');
+});
+test('TAA history clamping present to prevent ghosting', () => {
+  assert(webglEngine.includes('clampedHist'), 'TAA history clamping missing');
+});
+test('Static detectBackend() method present for hardware auto-detection', () => {
+  assert(webglEngine.includes('static async detectBackend()'), 'detectBackend method missing');
 });
 test('EASU pass uses srcSize and dstSize separately (Bug2 v30 fix)', () => {
   assert(webglEngine.includes('u_srcSize') && webglEngine.includes('u_dstSize'),

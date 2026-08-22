@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-08-22T13:55:52.160Z",
-  "total": 96,
-  "passed": 96,
+  "timestamp": "2026-08-22T14:03:14.682Z",
+  "total": 99,
+  "passed": 99,
   "failed": 0,
   "warnings": 0,
   "passRate": 100,
@@ -59,7 +59,19 @@
       "status": "PASS"
     },
     {
-      "name": "Three shader programs present (EASU, RCAS, Color)",
+      "name": "Four shader programs present (EASU, RCAS, Color, TAA)",
+      "status": "PASS"
+    },
+    {
+      "name": "TAA Temporal Anti-Aliasing shader present (_fsTAA)",
+      "status": "PASS"
+    },
+    {
+      "name": "TAA history clamping present to prevent ghosting",
+      "status": "PASS"
+    },
+    {
+      "name": "Static detectBackend() method present for hardware auto-detection",
       "status": "PASS"
     },
     {

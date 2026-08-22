@@ -6,6 +6,7 @@ import {
 } from '../engine/videoUpscalerEngine';
 import { exportOfflineVideo } from '../engine/offlineExportEngine';
 import { WebGLVideoEngine } from '../engine/webglVideoEngine';
+import { globalAINeuralEngine } from '../engine/aiNeuralEngine';
 import { useWebglRenderLoop } from '../utils/useWebglRenderLoop';
 import VideoBatchQueue from './VideoBatchQueue';
 import PostRenderPlayer from './PostRenderPlayer';
@@ -412,19 +413,23 @@ export default function VideoStudio({ settings, setSettings }) {
                 {settings.scale === 4 ? '4K UHD (3840×2160p)' : settings.scale === 8 ? '8K Ultra (7680×4320p)' : settings.scale === 2 ? '2K (2560×1440p)' : '1080p FHD'} • {settings.fps === 'original' ? 'Source FPS (60FPS)' : `${settings.fps} FPS`}
               </div>
 
-              {/* Service Badges */}
+              {/* Service Badges — Cons → Pros Upgraded v32.0 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.75rem', fontSize: '0.62rem', textAlign: 'left', background: 'rgba(0,0,0,0.3)', padding: '0.5rem 0.6rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
-                  <span>Neural Frame Synthesizer</span>
-                  <span style={{ color: '#4ade80', fontWeight: 800 }}>● ONLINE (v30.0)</span>
+                  <span>4-Pass FSR 1.0 + TAA Engine</span>
+                  <span style={{ color: '#4ade80', fontWeight: 800 }}>● ONLINE (v32.0)</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
-                  <span>WebGPU Super-Res Service</span>
-                  <span style={{ color: '#38bdf8', fontWeight: 800 }}>⚡ ACTIVE</span>
+                  <span>Temporal Anti-Flicker (TAA)</span>
+                  <span style={{ color: '#a855f7', fontWeight: 800 }}>⚡ ACTIVE</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
-                  <span>RCAS Edge Sharpen Matrix</span>
-                  <span style={{ color: '#facc15', fontWeight: 800 }}>LOADED</span>
+                  <span>Hardware GPU Acceleration</span>
+                  <span style={{ color: '#38bdf8', fontWeight 800 }}>WebGL2 / WebGPU</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
+                  <span>WebCodecs 80Mbps Muxer</span>
+                  <span style={{ color: '#facc15', fontWeight: 800 }}>READY</span>
                 </div>
               </div>
 

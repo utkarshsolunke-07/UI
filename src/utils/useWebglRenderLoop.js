@@ -97,7 +97,7 @@ export function useWebglRenderLoop({
         ctx.drawImage(src, 0, 0, srcW, srcH);
       }
 
-      // ── 2. AI Upscale render (3-pass: EASU → RCAS → Color) ──
+      // ── 2. AI Upscale render (4-pass: EASU → RCAS → Color → TAA) ──
       try {
         webglEngineRef.current.render(src, {
           sharpness: settings.sharpness ?? 70,
@@ -106,6 +106,8 @@ export function useWebglRenderLoop({
           temp:      tempVal            ?? 0,
           grain:     settings.grain     ?? 2,
           lut:       settings.lut       || 'none',
+          enableTAA: settings.enableTAA ?? true,
+          taaWeight: settings.taaWeight ?? 0.75,
         });
       } catch (e) {
         console.warn('[RenderLoop] WebGL render error, reinitializing:', e);
