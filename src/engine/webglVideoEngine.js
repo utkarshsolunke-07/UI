@@ -113,7 +113,7 @@ export class WebGLVideoEngine {
       uniform vec2 u_dstSize;
 
       // Lanczos-3 sinc kernel (6-tap radius)
-      float lanczos3(float x) {
+      float lanczos(float x) {
         x = abs(x);
         if (x < 0.0001) return 1.0;
         if (x >= 3.0) return 0.0;
@@ -138,9 +138,9 @@ export class WebGLVideoEngine {
         vec4 vMax = vec4(-1e9);
 
         for (int iy = -2; iy <= 3; iy++) {
-          float wy = lanczos3(float(iy) - frac.y);
+          float wy = lanczos(float(iy) - frac.y);
           for (int ix = -2; ix <= 3; ix++) {
-            float wx = lanczos3(float(ix) - frac.x);
+            float wx = lanczos(float(ix) - frac.x);
             float wt = wx * wy;
             vec2 sampleUV = (fi + vec2(float(ix), float(iy)) + 0.5) * rcpSrc;
             sampleUV = clamp(sampleUV, vec2(0.0), vec2(1.0));
