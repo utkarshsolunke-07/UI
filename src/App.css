@@ -268,7 +268,7 @@
 /* Studio Layout Grids */
 .studio-grid-video {
   display: grid;
-  grid-template-columns: 1fr 1fr 320px;
+  grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
   align-items: start;
 }
