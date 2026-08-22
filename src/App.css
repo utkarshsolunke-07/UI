@@ -268,11 +268,16 @@
 /* Studio Layout Grids */
 .studio-grid-video {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr 1fr 340px;
   gap: 1rem;
   align-items: start;
 }
-@media (max-width: 768px) {
+@media (max-width: 1300px) {
+  .studio-grid-video {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 900px) {
   .studio-grid-video {
     grid-template-columns: 1fr;
   }

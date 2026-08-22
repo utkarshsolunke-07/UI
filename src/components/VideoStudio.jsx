@@ -84,7 +84,6 @@ export default function VideoStudio({ settings, setSettings }) {
   const videoRef        = useRef(null);
   const canvasRef       = useRef(null);    // AI-enhanced output canvas
   const rawCanvasRef    = useRef(null);    // RAW comparison canvas
-  const midCanvasRef    = useRef(null);    // Neural Mid-pass canvas
   const webglEngineRef  = useRef(null);    // WebGL Engine Reference
   const fileInputRef    = useRef(null);
   const sampleRef       = useRef(null);
@@ -124,7 +123,6 @@ export default function VideoStudio({ settings, setSettings }) {
   useWebglRenderLoop({
     canvasRef,
     rawCanvasRef,
-    midCanvasRef,
     videoRef,
     sampleRef,
     settings,
@@ -456,14 +454,9 @@ export default function VideoStudio({ settings, setSettings }) {
             </span>
           </div>
           <div className="viewport-toolbar-right">
-            <div style={{ display: 'flex', gap: '0.3rem', marginRight: '0.5rem' }}>
-              <button className={`nav-pill ${viewMode === 'side-by-side' ? 'active' : ''}`} style={{ fontSize: '0.62rem', padding: '0.3rem 0.7rem' }} onClick={() => setViewMode('side-by-side')}>
-                🔳 3-SECTION HORIZONTAL (DEFAULT)
-              </button>
-              <button className={`nav-pill ${viewMode === 'split' ? 'active' : ''}`} style={{ fontSize: '0.62rem', padding: '0.3rem 0.7rem' }} onClick={() => setViewMode('split')}>
-                ✂️ SPLIT SLIDER
-              </button>
-            </div>
+            <span style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--primary)', padding: '0.35rem 0.85rem', background: 'rgba(var(--primary-rgb),0.12)', border: '1px solid rgba(var(--primary-rgb),0.3)', borderRadius: '99px', marginRight: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+              🔳 DUAL SIDE-BY-SIDE COMPARISON STAGE
+            </span>
             <button className="btn-secondary" style={{ fontSize: '0.68rem', padding: '0.35rem 0.75rem' }} onClick={captureFrame}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d={ICO.camera}/></svg>
               SNAP 4K FRAME
@@ -474,9 +467,6 @@ export default function VideoStudio({ settings, setSettings }) {
         {/* Player Viewport Stage */}
         <div
           className="player-area"
-          onMouseMove={onContainerMouseMove}
-          onMouseUp={onContainerMouseUp}
-          onMouseLeave={onContainerMouseUp}
           style={{ minHeight: '400px', position: 'relative' }}
         >
           {!isSample && (
@@ -493,65 +483,30 @@ export default function VideoStudio({ settings, setSettings }) {
             />
           )}
 
-          {viewMode === 'side-by-side' ? (
-            /* ── 3 Horizontal Section Viewport Grid (DEFAULT) ── */
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.8rem', width: '100%', height: '100%', minHeight: '400px' }}>
-              {/* Viewport 1: RAW Input */}
-              <div style={{ background: '#090d16', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', position: 'relative', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ padding: '0.5rem 0.8rem', background: 'rgba(0,0,0,0.6)', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />
-                  1. RAW LOW-RES SOURCE INPUT
-                </div>
-                <div style={{ flex: 1, position: 'relative', minHeight: '340px' }}>
-                  <canvas ref={rawCanvasRef} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                </div>
+          {/* ── Side-by-Side Dual Viewport Grid ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', width: '100%', height: '100%', minHeight: '400px' }}>
+            {/* Left Viewport: RAW Input */}
+            <div style={{ background: '#090d16', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '0.5rem 0.8rem', background: 'rgba(0,0,0,0.6)', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />
+                RAW LOW-RES SOURCE INPUT
               </div>
-
-              {/* Viewport 2: Neural Mid-Pass Sharpening & Color Filter */}
-              <div style={{ background: '#090d16', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(168,85,247,0.3)', position: 'relative', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ padding: '0.5rem 0.8rem', background: 'rgba(168,85,247,0.15)', borderBottom: '1px solid rgba(168,85,247,0.3)', fontSize: '0.65rem', fontWeight: 800, color: '#c084fc', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#a855f7', display: 'inline-block' }} />
-                  2. NEURAL MID-PASS (FILTER & COLOR)
-                </div>
-                <div style={{ flex: 1, position: 'relative', minHeight: '340px' }}>
-                  <canvas ref={midCanvasRef} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                </div>
-              </div>
-
-              {/* Viewport 3: AI 4K Output */}
-              <div style={{ background: '#090d16', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(var(--primary-rgb),0.35)', position: 'relative', display: 'flex', flexDirection: 'column', boxShadow: '0 0 25px rgba(var(--primary-rgb),0.12)' }}>
-                <div style={{ padding: '0.5rem 0.8rem', background: 'rgba(var(--primary-rgb),0.15)', borderBottom: '1px solid rgba(var(--primary-rgb),0.3)', fontSize: '0.65rem', fontWeight: 800, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <span style={{ color: '#fbbf24' }}>★</span>
-                  3. UTKARSH AI {settings.scale}× 60-120 FPS ULTRA ENHANCED
-                </div>
-                <div style={{ flex: 1, position: 'relative', minHeight: '340px' }}>
-                  <canvas ref={canvasRef} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                </div>
-              </div>
-            </div>
-          ) : (
-            /* ── Split Slider Viewport ── */
-            <div className="split-container" style={{ width: '100%', height: '100%' }}>
-              {/* Right layer: AI-enhanced canvas */}
-              <div className="split-layer">
-                <canvas ref={canvasRef} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                <span className="split-layer-label right">AI {settings.scale}× 60 FPS ULTRA ENHANCED</span>
-              </div>
-
-              {/* Left layer: raw original canvas */}
-              <div className="split-layer" style={{ clipPath: `polygon(0 0, ${sliderPos}% 0, ${sliderPos}% 100%, 0 100%)` }}>
+              <div style={{ flex: 1, position: 'relative', minHeight: '340px' }}>
                 <canvas ref={rawCanvasRef} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                <span className="split-layer-label left">RAW INPUT</span>
-              </div>
-
-              {/* Divider handle */}
-              <div className="split-divider" style={{ left: `${sliderPos}%` }} onMouseDown={onSliderMouseDown}>
-                <div className="split-handle">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d={ICO.move}/></svg>
-                </div>
               </div>
             </div>
-          )}
+
+            {/* Right Viewport: AI 4K Output */}
+            <div style={{ background: '#090d16', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(var(--primary-rgb),0.35)', position: 'relative', display: 'flex', flexDirection: 'column', boxShadow: '0 0 25px rgba(var(--primary-rgb),0.12)' }}>
+              <div style={{ padding: '0.5rem 0.8rem', background: 'rgba(var(--primary-rgb),0.15)', borderBottom: '1px solid rgba(var(--primary-rgb),0.3)', fontSize: '0.65rem', fontWeight: 800, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{ color: '#fbbf24' }}>★</span>
+                UTKARSH AI {settings.scale}× 60-120 FPS ULTRA ENHANCED
+              </div>
+              <div style={{ flex: 1, position: 'relative', minHeight: '340px' }}>
+                <canvas ref={canvasRef} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Timeline & Playback Bar */}
