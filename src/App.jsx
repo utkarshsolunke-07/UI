@@ -159,7 +159,7 @@ export default function App() {
                 <div className="modal-ring" />
                 <div className="modal-pct">{progress}%</div>
               </div>
-              <div className="modal-title">Synthesizing 4K Sub-Pixels</div>
+              <div className="modal-title">Running AI Upscale Process</div>
               <div className="modal-sub">{statusMsg}</div>
               <div className="prog-track" style={{ width: 280 }}>
                 <div className="prog-fill" style={{ width: `${progress}%` }} />

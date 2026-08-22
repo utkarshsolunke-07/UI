@@ -9,7 +9,7 @@ export async function exportOfflineVideo(
   return new Promise(async (resolve, reject) => {
     let worker = null;
     try {
-      const fps = settings.fps === 'original' ? 60 : (Number(settings.fps) || 60);
+      const fps = 30; // Solid 30 FPS default for reliable export without FPS drops
       const duration = videoElementSource.duration || 10;
       const totalFrames = Math.floor(duration * fps);
       

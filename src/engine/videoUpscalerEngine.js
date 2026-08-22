@@ -301,7 +301,7 @@ export function recordUpscaledVideoStream(canvas, videoElementSource, durationMs
       const timer = setInterval(() => {
         const elapsed = Date.now() - startTime;
         const pct = Math.min(100, Math.round((elapsed / durationMs) * 100));
-        onProgress?.(pct, `Synthesizing AI Video & Audio Stream at ${fps} FPS (${pct}%)...`);
+        onProgress?.(pct, `Executing AI Upscale Process (${pct}%)...`);
 
         if (elapsed >= durationMs) {
           clearInterval(timer);
