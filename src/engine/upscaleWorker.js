@@ -67,7 +67,7 @@ self.onmessage = async function(e) {
           codec:            'mp4a.40.2',
           sampleRate:       audioData.sampleRate,
           numberOfChannels: audioData.numberOfChannels,
-          bitrate:          320_000,
+          bitrate:          192_000,
         });
 
         const { buffer, numberOfChannels, sampleRate } = audioData;
