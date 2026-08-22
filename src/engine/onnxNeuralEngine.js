@@ -1,5 +1,5 @@
 /**
- * UTKARSH ONNX NEURAL TENSOR ENGINE v32.0
+ * UTKARSH ONNX NEURAL TENSOR ENGINE v33.0
  * ============================================================
  * Client-Side Neural Execution Engine for ONNX Models
  * (Real-ESRGAN, CodeFormer, SwinIR, Waifu2x CUGAN)
@@ -21,7 +21,8 @@ export class ONNXNeuralEngine {
   }
 
   /**
-   * Run Client-Side Neural Tensor Inference (Sub-Pixel Convolution & Residual Feature Map Synthesis)
+   * Run Client-Side Neural Tensor Inference
+   * (Sub-Pixel Convolution & Residual Feature Map Synthesis)
    */
   async runInference(imageData, w, h, modelId = 'realesrgan_x4plus') {
     if (!imageData) return null;

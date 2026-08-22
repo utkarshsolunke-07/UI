@@ -1,5 +1,5 @@
 /**
- * UTKARSH GEMINI VISION AI AGENT v32.0
+ * UTKARSH GEMINI VISION AI AGENT v33.0
  * ============================================================
  * Connects Google Gemini 1.5 / 2.0 Vision API for Multimodal
  * Scene Analysis, Auto-Slider Tuning, and Quality Assessment.
@@ -23,7 +23,7 @@ export function getGeminiApiKey() {
  */
 export async function analyzeFrameWithGemini(canvasOrImgElement, customKey = '') {
   const apiKey = customKey || cachedApiKey;
-  
+
   // If no API key is provided, perform high-accuracy client-side statistical analysis
   if (!apiKey) {
     return performClientSideAnalysis(canvasOrImgElement);
@@ -53,29 +53,26 @@ export async function analyzeFrameWithGemini(canvasOrImgElement, customKey = '')
       "denoise": number (0-100),
       "grain": number (0-5),
       "lut": "none" | "cinematic" | "filmic" | "vintage" | "cool" | "cyber" | "golden",
-      "recommendedModel": "utkarsh_omni_absolute" | "realesrgan_x4plus" | "realesrgan_anime_v3" | "codeformer_swinir" | "waifu2x_cugan",
-      "analysis": "string"
-    }
-
-    Return ONLY the JSON object. Do not include markdown blocks or any other text.`;
+      "recommendedModel": "utkarsh_master_fusion" | "realesrgan_x4plus" | "realesrgan_anime_v3" | "codeformer_swinir" | "waifu2x_cugan",
+      "sceneType": string,
+      "analysisSummary": string
+    }`;
 
     const resp = await fetch(ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: prompt },
-              { inline_data: { mime_type: 'image/jpeg', data: base64Data } }
-            ]
-          }
-        ]
+        contents: [{
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: 'image/jpeg', data: base64Data } }
+          ]
+        }]
       })
     });
 
     if (!resp.ok) {
-      console.warn('[Gemini API] Request returned status:', resp.status, 'Using statistical analyzer.');
+      console.warn('[Gemini API] Request returned status:', resp.status, '— Using statistical analyzer.');
       return performClientSideAnalysis(canvasOrImgElement);
     }
 
@@ -110,10 +107,10 @@ function performClientSideAnalysis(element) {
 
     let lumSum = 0, edgeCount = 0;
     for (let i = 0; i < data.length; i += 4) {
-      const lum = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+      const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
       lumSum += lum;
       if (i > 4) {
-        const prevLum = 0.299 * data[i-4] + 0.587 * data[i-3] + 0.114 * data[i-2];
+        const prevLum = 0.299 * data[i - 4] + 0.587 * data[i - 3] + 0.114 * data[i - 2];
         if (Math.abs(lum - prevLum) > 25) edgeCount++;
       }
     }
@@ -121,7 +118,6 @@ function performClientSideAnalysis(element) {
     const totalPx = w * h;
     const avgLum = Math.round(lumSum / totalPx);
     const edgeDensity = edgeCount / totalPx;
-
     const isDark = avgLum < 80;
     const isHighDetail = edgeDensity > 0.18;
 
@@ -134,7 +130,7 @@ function performClientSideAnalysis(element) {
       denoise: isDark ? 40 : 25,
       grain: 2,
       lut: isDark ? 'cool' : 'none',
-      recommendedModel: isHighDetail ? 'realesrgan_x4plus' : 'utkarsh_omni_absolute',
+      recommendedModel: isHighDetail ? 'realesrgan_x4plus' : 'utkarsh_master_fusion',
       sceneType: isDark ? 'Low-Light Scene' : isHighDetail ? 'High-Texture Scene' : 'Standard Scene',
       analysisSummary: `Avg Lum: ${avgLum}, Edge Density: ${(edgeDensity * 100).toFixed(1)}% → Optimal settings applied`,
     };
@@ -143,7 +139,7 @@ function performClientSideAnalysis(element) {
       success: true,
       provider: 'Default Profile',
       sharpness: 75, clarity: 70, hdr: 40, denoise: 25, grain: 2, lut: 'none',
-      recommendedModel: 'utkarsh_omni_absolute',
+      recommendedModel: 'utkarsh_master_fusion',
       sceneType: 'General Scene',
       analysisSummary: 'Standard high-definition parameters applied',
     };
