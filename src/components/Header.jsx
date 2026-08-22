@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { getGeminiApiKey, setGeminiApiKey } from '../engine/geminiAiEngine';
 
 const THEMES = [
   { value: 'obsidian',  label: '🌊 Obsidian Cyan' },
@@ -13,6 +14,14 @@ const NAV_ITEMS = [
 ];
 
 export default function Header({ activeTab, setActiveTab, activeTheme, setActiveTheme }) {
+  const [geminiKey, setKey] = useState(getGeminiApiKey());
+  const [showModal, setShowModal] = useState(false);
+
+  const saveKey = () => {
+    setGeminiApiKey(geminiKey);
+    setShowModal(false);
+  };
+
   return (
     <header className="app-header" role="banner">
       <div className="hdr-inner">
@@ -41,7 +50,7 @@ export default function Header({ activeTab, setActiveTab, activeTheme, setActive
           </div>
           <div>
             <div className="brand-name">UTKARSH AI UPSCALER</div>
-            <div className="brand-ver">SOTA SUPER-RESOLUTION ENGINE v30.0</div>
+            <div className="brand-ver">SOTA SUPER-RESOLUTION ENGINE v32.0</div>
           </div>
         </div>
 
@@ -61,16 +70,22 @@ export default function Header({ activeTab, setActiveTab, activeTheme, setActive
 
         {/* ── Right Status & Controls ── */}
         <div className="hdr-right">
+          <button
+            onClick={() => setShowModal(true)}
+            style={{
+              padding: '0.35rem 0.65rem', borderRadius: '8px',
+              border: '1px solid rgba(66, 133, 244, 0.5)',
+              background: 'rgba(66, 133, 244, 0.12)',
+              color: '#4285f4', fontWeight: 800, fontSize: '0.68rem',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem'
+            }}
+          >
+            ✨ GEMINI VISION AI
+          </button>
+
           <div className="status-badge" title="WebGPU Acceleration">
             <span className="s-dot" />
-            <span>⚡ WEBGPU CORE ACTIVE</span>
-            <div className="gpu-visualizer">
-              <span className="v-bar v-bar-1" />
-              <span className="v-bar v-bar-2" />
-              <span className="v-bar v-bar-3" />
-              <span className="v-bar v-bar-4" />
-              <span className="v-bar v-bar-5" />
-            </div>
+            <span>⚡ WEBGPU CORE</span>
           </div>
 
           <select
@@ -86,6 +101,36 @@ export default function Header({ activeTab, setActiveTab, activeTheme, setActive
         </div>
 
       </div>
+
+      {showModal && (
+        <div className="modal-backdrop">
+          <div className="modal-box" style={{ maxWidth: '420px', textAlign: 'left' }}>
+            <div style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--primary)', marginBottom: '0.5rem' }}>
+              ✨ Google Gemini 1.5/2.0 Vision AI Key
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+              Enter your Google Gemini API key to enable real-time generative scene analysis & vision-guided AI super-resolution parameter auto-tuning.
+            </div>
+            <input
+              type="password"
+              placeholder="AIzaSy..."
+              value={geminiKey}
+              onChange={e => setKey(e.target.value)}
+              style={{
+                width: '100%', padding: '0.65rem', borderRadius: '8px',
+                background: '#090d16', border: '1px solid var(--border)',
+                color: 'var(--text)', fontSize: '0.8rem', fontFamily: 'var(--font-mono)',
+                marginBottom: '1rem'
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <button className="btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
+              <button className="btn-primary" onClick={saveKey}>Save API Key</button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }
+

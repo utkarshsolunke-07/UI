@@ -108,10 +108,21 @@ export default function ControlsPanel({
       {tab === 'enhance' && (
         <div style={{ padding: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
           <div className="section-title">NEURAL AI ENGINE</div>
-          <div style={{ padding: '0.6rem 0.85rem', borderRadius: '10px', background: 'linear-gradient(135deg, rgba(var(--primary-rgb),0.18), rgba(var(--secondary-rgb),0.12))', border: '1px solid rgba(var(--primary-rgb),0.4)', color: 'var(--primary)', fontWeight: 800, fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ color: '#fbbf24' }}>★</span>
-            <span>UTKARSH MASTER ENGINE v30.0</span>
-          </div>
+          <select
+            className="ctrl-select"
+            value={settings.model || 'utkarsh_omni_absolute'}
+            onChange={e => set('model', e.target.value)}
+          >
+            <option value="utkarsh_omni_absolute">👑 Utkarsh Omni-Fusion Absolute v33.0 (Ultimate 5-Pass)</option>
+            <option value="gemini_vision_ai">✨ Google Gemini 1.5/2.0 Vision AI Agent (Auto-Guided)</option>
+            <option value="utkarsh_master_fusion">★ Utkarsh Master Multi-AI Fusion v32.0 (Legacy)</option>
+            <option value="realesrgan_x4plus">⚡ Real-ESRGAN x4+ (Open Source BSD-3-Clause)</option>
+            <option value="realesrgan_anime_v3">🌸 Real-ESRGAN Anime Video v3 (Open Source 2D)</option>
+            <option value="codeformer_swinir">🎭 CodeFormer & SwinIR (Open Source Face Restoration)</option>
+            <option value="waifu2x_cugan">🎨 Waifu2x CUGAN 2D Vectorizer (Open Source MIT)</option>
+            <option value="huggingface_open_ai">🤗 HuggingFace Free Open Inference API (Cloud AI)</option>
+            <option value="webgpu_onnx_local">⚡ WebGPU Local ONNX Neural Engine (100% Free Local)</option>
+          </select>
 
           <div className="divider" />
           <div className="section-title">SUPER-RESOLUTION SLIDERS</div>

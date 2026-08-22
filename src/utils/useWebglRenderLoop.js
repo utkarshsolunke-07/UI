@@ -25,32 +25,47 @@ export function useWebglRenderLoop({
   tempVal,
   webglEngineRef,
 }) {
-  const animIdRef  = useRef(null);
-  const lastFrameTs = useRef(0);
+  const animIdRef     = useRef(null);
+  const settingsRef   = useRef(settings);
+  const tempValRef    = useRef(tempVal);
+  const lastVideoTime = useRef(-1);
+  const lastSettings  = useRef('');
+  const lastTemp      = useRef(null);
+
+  // Keep refs updated to prevent React hook re-subscription lag
+  settingsRef.current = settings;
+  tempValRef.current  = tempVal;
 
   useEffect(() => {
     let stopped = false;
 
-    const render = (now) => {
+    const render = () => {
       if (stopped) return;
       animIdRef.current = requestAnimationFrame(render);
-
-      // FPS throttle — skip if less than 16.6ms since last render
-      if (now - lastFrameTs.current < FRAME_MS - 1) return;
-      lastFrameTs.current = now;
 
       const canvas    = canvasRef.current;
       const rawCanvas = rawCanvasRef.current;
       if (!canvas) return;
 
+      const currentSettings = settingsRef.current;
+      const currentTemp     = tempValRef.current;
+
       // Get video source
       const src = isSample ? sampleRef.current?.canvas : videoRef.current;
       if (!src) return;
 
-      // Don't render if HTMLVideoElement isn't ready
+      // Don't render if HTMLVideoElement isn't ready or hasn't advanced a frame
       if (src instanceof HTMLVideoElement) {
         if (src.readyState < 2) return;
-        if (src.paused && src.currentTime === 0) return;
+        
+        const currentSettingsStr = JSON.stringify(currentSettings);
+        const settingsChanged = currentSettingsStr !== lastSettings.current || currentTemp !== lastTemp.current;
+        lastSettings.current = currentSettingsStr;
+        lastTemp.current = currentTemp;
+
+        // Skip rendering if the video timestamp hasn't changed AND settings haven't changed
+        if (src.currentTime === lastVideoTime.current && !isSample && !settingsChanged) return;
+        lastVideoTime.current = src.currentTime;
       }
 
       // ── Source dimensions ──
@@ -59,14 +74,17 @@ export function useWebglRenderLoop({
       if (!srcW || !srcH) return;
 
       const aspect = srcW / srcH;
-      const scale  = settings.scale || 4;
 
-      // ── Preview canvas dimensions (capped at 1920 for smooth UI) ──
+      // ── True Target Super-Resolution Output (1080p / 2K / 4K / 8K) ──
       let dstW, dstH;
-      if (scale <= 1.5)      { dstW = 1920; dstH = Math.round(1920 / aspect); }
-      else if (scale <= 2)   { dstW = 1920; dstH = Math.round(1920 / aspect); }
-      else if (scale <= 4)   { dstW = 1920; dstH = Math.round(1920 / aspect); }
-      else                   { dstW = 1920; dstH = Math.round(1920 / aspect); }
+      if (currentSettings.targetWidth && currentSettings.targetHeight) {
+        dstW = currentSettings.targetWidth;
+        dstH = currentSettings.targetHeight;
+      } else {
+        const scale = currentSettings.scale || 2;
+        dstW = Math.round(srcW * scale);
+        dstH = Math.round(srcH * scale);
+      }
 
       dstW = dstW % 2 === 0 ? dstW : dstW + 1;
       dstH = dstH % 2 === 0 ? dstH : dstH + 1;
@@ -77,13 +95,12 @@ export function useWebglRenderLoop({
         canvas.height = dstH;
       }
 
-      // ── Init / re-init WebGL engine if canvas changed ──
+      // ── Init / re-init WebGL engine ──
       if (!webglEngineRef.current) {
         try {
           webglEngineRef.current = new WebGLVideoEngine(canvas);
         } catch (e) {
-          console.error('[RenderLoop] WebGL2 init failed:', e);
-          return;
+          console.warn('[RenderLoop] WebGL init failed, using High-Performance Canvas 2D Fallback:', e);
         }
       }
 
@@ -97,21 +114,35 @@ export function useWebglRenderLoop({
         ctx.drawImage(src, 0, 0, srcW, srcH);
       }
 
-      // ── 2. AI Upscale render (4-pass: EASU → RCAS → Color → TAA) ──
-      try {
-        webglEngineRef.current.render(src, {
-          sharpness: settings.sharpness ?? 70,
-          clarity:   settings.clarity   ?? 65,
-          hdr:       settings.hdr       ?? 40,
-          temp:      tempVal            ?? 0,
-          grain:     settings.grain     ?? 2,
-          lut:       settings.lut       || 'none',
-          enableTAA: settings.enableTAA ?? true,
-          taaWeight: settings.taaWeight ?? 0.75,
-        });
-      } catch (e) {
-        console.warn('[RenderLoop] WebGL render error, reinitializing:', e);
-        webglEngineRef.current = null; // Force reinit next frame
+      // ── 2. AI Upscale render (WebGL Multi-Pass or Canvas2D Fallback) ──
+      if (webglEngineRef.current) {
+        try {
+          webglEngineRef.current.render(src, {
+            sharpness: currentSettings.sharpness ?? 70,
+            clarity:   currentSettings.clarity   ?? 65,
+            hdr:       currentSettings.hdr       ?? 40,
+            temp:      currentTemp               ?? 0,
+            grain:     currentSettings.grain     ?? 2,
+            lut:       currentSettings.lut       || 'none',
+            model:     currentSettings.model     || 'utkarsh_omni_absolute',
+            enableTAA: currentSettings.enableTAA ?? true,
+            taaWeight: currentSettings.taaWeight ?? 0.35,
+          });
+        } catch (e) {
+          console.warn('[RenderLoop] WebGL render error, reinitializing:', e);
+          webglEngineRef.current = null;
+        }
+      } else {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          const sharp = currentSettings.sharpness ?? 70;
+          const hdr   = currentSettings.hdr ?? 40;
+          ctx.filter = `contrast(${100 + sharp * 0.4}%) saturate(${100 + hdr * 0.5}%) brightness(${100 + hdr * 0.1}%)`;
+          ctx.drawImage(src, 0, 0, dstW, dstH);
+          ctx.filter = 'none';
+        }
       }
     };
 
@@ -121,5 +152,5 @@ export function useWebglRenderLoop({
       stopped = true;
       if (animIdRef.current) cancelAnimationFrame(animIdRef.current);
     };
-  }, [settings, isSample, tempVal, canvasRef, rawCanvasRef, videoRef, sampleRef, webglEngineRef]);
+  }, [isSample, canvasRef, rawCanvasRef, videoRef, sampleRef, webglEngineRef]);
 }

@@ -8,6 +8,7 @@ import { exportOfflineVideo } from '../engine/offlineExportEngine';
 import { WebGLVideoEngine } from '../engine/webglVideoEngine';
 import { globalAINeuralEngine } from '../engine/aiNeuralEngine';
 import { useWebglRenderLoop } from '../utils/useWebglRenderLoop';
+import { analyzeFrameWithGemini } from '../engine/geminiAiEngine';
 import VideoBatchQueue from './VideoBatchQueue';
 import PostRenderPlayer from './PostRenderPlayer';
 
@@ -44,13 +45,6 @@ const LUT_OPTIONS = [
   { value: 'golden',    label: 'Golden Hour Warmth' },
 ];
 
-const MODEL_OPTIONS = [
-  { value: 'utkarsh_omni', label: '★ UTKARSH AI OMNI-FUSION ENGINE (Master SOTA Unified Fusion)' },
-  { value: 'proteus',      label: 'Utkarsh Proteus Profile (Balanced Photos & Faces)' },
-  { value: 'cugan',        label: 'Utkarsh CUGAN Profile (Anime & 2D Art)' },
-  { value: 'dione',        label: 'Utkarsh Dione Profile (Interlaced Tapes & VHS)' },
-  { value: 'realesrgan',   label: 'Utkarsh ESRGAN Profile (Landscapes & Web Graphics)' },
-];
 
 export default function VideoStudio({ settings, setSettings }) {
   const [studioMode, setStudioMode]           = useState('single');
@@ -82,6 +76,38 @@ export default function VideoStudio({ settings, setSettings }) {
   /* Bokeh & Temperature */
   const [vignetteStr, setVignetteStr] = useState(25);
   const [tempVal, setTempVal]         = useState(0);
+
+  /* Gemini Vision AI state */
+  const [geminiStatus, setGeminiStatus]           = useState('');
+  const [isGeminiAnalyzing, setIsGeminiAnalyzing] = useState(false);
+
+  const runGeminiAutoOptimize = async () => {
+    const src = isSample ? sampleRef.current?.canvas : videoRef.current;
+    if (!src) return alert('No active video or canvas to analyze!');
+    setIsGeminiAnalyzing(true);
+    setGeminiStatus('Analyzing frame with Gemini 1.5 Vision AI...');
+    try {
+      const res = await analyzeFrameWithGemini(src);
+      if (res && res.success) {
+        setSettings(p => ({
+          ...p,
+          sharpness: res.sharpness ?? p.sharpness,
+          clarity: res.clarity ?? p.clarity,
+          hdr: res.hdr ?? p.hdr,
+          denoise: res.denoise ?? p.denoise,
+          grain: res.grain ?? p.grain,
+          lut: res.lut ?? p.lut,
+          model: res.recommendedModel ?? p.model,
+        }));
+        setGeminiStatus(`✨ Gemini AI Analyzed: ${res.sceneType} (${res.provider}) → Parameters Auto-Tuned!`);
+      }
+    } catch (err) {
+      setGeminiStatus(`⚠️ Gemini analysis notice: ${err.message}`);
+    } finally {
+      setIsGeminiAnalyzing(false);
+      setTimeout(() => setGeminiStatus(''), 7000);
+    }
+  };
 
   const videoRef        = useRef(null);
   const canvasRef       = useRef(null);    // AI-enhanced output canvas
@@ -278,6 +304,41 @@ export default function VideoStudio({ settings, setSettings }) {
         </div>
       </div>
 
+      {/* Prominent Active Uploaded File Name Banner */}
+      <div style={{
+        padding: '0.75rem 1.2rem', borderRadius: '14px',
+        background: 'linear-gradient(135deg, rgba(var(--primary-rgb),0.18), rgba(var(--secondary-rgb),0.08))',
+        border: '1px solid rgba(var(--primary-rgb),0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{
+            width: '36px', height: '36px', borderRadius: '10px',
+            background: 'rgba(var(--primary-rgb),0.2)', border: '1px solid rgba(var(--primary-rgb),0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem'
+          }}>
+            🎥
+          </div>
+          <div>
+            <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', fontWeight: 800, letterSpacing: '0.08em', display: 'block' }}>
+              ACTIVE VIDEO FILE
+            </span>
+            <span style={{ fontSize: '0.95rem', color: 'var(--primary)', fontWeight: 900 }}>
+              {videoName}
+            </span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, background: 'rgba(0,0,0,0.35)', padding: '0.35rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+            🎬 {isSample ? 'Sample Video Demo' : 'Custom Uploaded Video'}
+          </span>
+          <span style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: 800, background: 'rgba(var(--primary-rgb),0.12)', padding: '0.35rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(var(--primary-rgb),0.3)' }}>
+            ⏱️ {duration ? `${duration.toFixed(1)}s` : '10.0s'}
+          </span>
+        </div>
+      </div>
+
       {/* ============================================================
          TOP SECTION: CONTROLS & NEURAL TUNING MATRIX
          ============================================================ */}
@@ -342,10 +403,39 @@ export default function VideoStudio({ settings, setSettings }) {
 
           <div className="panel-body">
             <div>
-              <div className="section-title">NEURAL AI ENGINE</div>
-              <div style={{ padding: '0.6rem 0.85rem', borderRadius: '10px', background: 'linear-gradient(135deg, rgba(var(--primary-rgb),0.18), rgba(var(--secondary-rgb),0.12))', border: '1px solid rgba(var(--primary-rgb),0.4)', color: 'var(--primary)', fontWeight: 800, fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ color: '#fbbf24' }}>★</span>
-                <span>UTKARSH MASTER ENGINE v30.0</span>
+              <div className="section-title">OPEN SOURCE & FREE AI MODELS</div>
+              <select
+                className="ctrl-select"
+                style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', fontWeight: 800, fontSize: '0.72rem', background: '#090d16', border: '1px solid rgba(var(--primary-rgb),0.4)', color: 'var(--primary)', marginBottom: '0.5rem' }}
+                value={settings.model || 'utkarsh_omni_absolute'}
+                onChange={e => set('model', e.target.value)}
+              >
+                <option value="utkarsh_omni_absolute">👑 Utkarsh Omni-Fusion Absolute v33.0 (Ultimate 5-Pass)</option>
+                <option value="gemini_vision_ai">✨ Google Gemini 1.5/2.0 Vision AI Agent (Auto-Guided)</option>
+                <option value="utkarsh_master_fusion">★ Utkarsh Master Multi-AI Fusion v32.0 (Legacy)</option>
+                <option value="realesrgan_x4plus">⚡ Real-ESRGAN x4+ (Open Source BSD-3-Clause)</option>
+                <option value="realesrgan_anime_v3">🌸 Real-ESRGAN Anime Video v3 (Open Source 2D)</option>
+                <option value="codeformer_swinir">🎭 CodeFormer & SwinIR (Open Source Face Restoration)</option>
+                <option value="waifu2x_cugan">🎨 Waifu2x CUGAN 2D Vectorizer (Open Source MIT)</option>
+                <option value="huggingface_open_ai">🤗 HuggingFace Free Open Inference API (Cloud AI)</option>
+                <option value="webgpu_onnx_local">⚡ WebGPU Local ONNX Neural Engine (100% Free Local)</option>
+              </select>
+              
+              <div style={{ padding: '0.6rem 0.85rem', borderRadius: '10px', background: 'linear-gradient(135deg, rgba(var(--primary-rgb),0.18), rgba(var(--secondary-rgb),0.12))', border: '1px solid rgba(var(--primary-rgb),0.4)', color: 'var(--primary)', fontWeight: 800, fontSize: '0.72rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#fbbf24' }}>{settings.model === 'realesrgan_x4plus' ? '⚡ BSD-3-Clause Open Source' : settings.model === 'huggingface_open_ai' ? '🤗 Free Cloud Inference' : settings.model === 'codeformer_swinir' ? '🎭 S-Lab Transformer' : '★ SOTA Multi-AI Engine'}</span>
+                  <span style={{ fontSize: '0.62rem', opacity: 0.8, color: '#38bdf8' }}>Execution: {settings.model === 'huggingface_open_ai' ? 'Free Cloud API' : 'WebGPU / WebGL2'}</span>
+                </div>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 500, marginTop: '0.1rem' }}>
+                  {settings.model === 'utkarsh_omni_absolute' ? 'Ultimate 5-Pass Engine: Combines EASU, Anime4K Vector Lines, RCAS Textures, HDR & Temporal Anti-Aliasing.' :
+                   settings.model === 'realesrgan_x4plus' ? 'Real-ESRGAN x4+ convolutional residual neural network trained on synthetic degrades for photorealistic recovery.' :
+                   settings.model === 'realesrgan_anime_v3' ? 'Real-ESRGAN Anime Video v3 compact network specialized for 2D animation, removing compression ringing.' :
+                   settings.model === 'codeformer_swinir' ? 'CodeFormer codebook lookup transformer combined with SwinIR for high-fidelity blind face recovery.' :
+                   settings.model === 'waifu2x_cugan' ? 'CUGAN deep learning model for clean 2D line art vectorization and edge sharpening.' :
+                   settings.model === 'huggingface_open_ai' ? 'Free open-source inference endpoint connecting HuggingFace Swin2SR & Stable Diffusion Upscaler.' :
+                   settings.model === 'webgpu_onnx_local' ? 'Zero-cost, zero-API-key in-browser neural tensor execution using WebGPU and ONNX runtime.' :
+                   'Master Ensemble combining Lanczos-3, Sobel-Laplacian Edge Synthesis, and AMD RCAS.'}
+                </div>
               </div>
             </div>
 
@@ -353,7 +443,11 @@ export default function VideoStudio({ settings, setSettings }) {
               <div className="section-title">TARGET SCALE & RESOLUTION</div>
               <div className="pill-row">
                 {[{l:'1080p FHD', s:1.5},{l:'2K 1440p', s:2},{l:'4K UHD', s:4},{l:'8K Ultra', s:8}].map(({l,s}) => (
-                  <button key={s} className={`res-pill ${settings.scale === s ? 'active' : ''}`} onClick={() => set('scale', s)}>
+                  <button
+                    key={s}
+                    className={`res-pill ${settings.scale === s && !settings.targetWidth ? 'active' : ''}`}
+                    onClick={() => setSettings(p => ({ ...p, scale: s, targetWidth: null, targetHeight: null }))}
+                  >
                     {l} ({s}×)
                   </button>
                 ))}
@@ -378,19 +472,35 @@ export default function VideoStudio({ settings, setSettings }) {
             </div>
 
             <div className="divider" />
+            <div className="section-title">GEMINI MULTIMODAL VISION AI</div>
+            <button
+              className="btn-primary w-full"
+              style={{ padding: '0.65rem', fontSize: '0.72rem', background: 'linear-gradient(135deg, #a855f7, #38bdf8)', border: 'none', color: '#fff', fontWeight: 800, cursor: 'pointer', borderRadius: '10px', marginBottom: '0.5rem' }}
+              onClick={runGeminiAutoOptimize}
+              disabled={isGeminiAnalyzing}
+            >
+              {isGeminiAnalyzing ? '🤖 GEMINI VISION AI ANALYZING FRAME…' : '🤖 GEMINI VISION AI AUTO-OPTIMIZE SCENE'}
+            </button>
+            {geminiStatus && (
+              <div style={{ fontSize: '0.65rem', color: '#38bdf8', fontWeight: 700, padding: '0.4rem 0.6rem', borderRadius: '8px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.3)', marginBottom: '0.5rem' }}>
+                {geminiStatus}
+              </div>
+            )}
+
+            <div className="divider" />
             <div className="section-title">QUICK PRESET ACCELERATORS</div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.4rem' }}>
-              <button className="btn-ghost" onClick={() => setSettings(p => ({ ...p, sharpness: 80, clarity: 75, denoise: 15, scale: 4 }))}>
+              <button className="btn-ghost" onClick={() => setSettings(p => ({ ...p, sharpness: 80, clarity: 75, denoise: 15, scale: 4, model: 'utkarsh_master_fusion' }))}>
                 🔪 Ultra Sharp 4K
               </button>
-              <button className="btn-ghost" onClick={() => setSettings(p => ({ ...p, hdr: 65, clahe: 50, lut: 'cinematic' }))}>
+              <button className="btn-ghost" onClick={() => setSettings(p => ({ ...p, hdr: 65, sharpness: 65, clarity: 85, lut: 'cinematic', model: 'realesrgan_x4plus' }))}>
                 🌟 HDR Cinematic
               </button>
-              <button className="btn-ghost" onClick={() => setSettings(p => ({ ...p, denoise: 30, faceRestore: 60, grain: 2 }))}>
+              <button className="btn-ghost" onClick={() => setSettings(p => ({ ...p, denoise: 40, sharpness: 60, clarity: 70, grain: 2, model: 'codeformer_swinir' }))}>
                 🎭 Face Smooth
               </button>
-              <button className="btn-ghost" onClick={() => setSettings(p => ({ ...p, denoise: 50, sharpness: 35, grain: 0.5 }))}>
-                ✨ Grain Fix
+              <button className="btn-ghost" onClick={() => setSettings(p => ({ ...p, denoise: 50, sharpness: 55, clarity: 95, grain: 0, model: 'realesrgan_anime_v3' }))}>
+                ✨ 2D Anime/Clean
               </button>
             </div>
           </div>
@@ -425,7 +535,7 @@ export default function VideoStudio({ settings, setSettings }) {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
                   <span>Hardware GPU Acceleration</span>
-                  <span style={{ color: '#38bdf8', fontWeight 800 }}>WebGL2 / WebGPU</span>
+                  <span style={{ color: '#38bdf8', fontWeight: 800 }}>WebGL2 / WebGL1 / Canvas2D</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
                   <span>WebCodecs 80Mbps Muxer</span>
@@ -520,7 +630,7 @@ export default function VideoStudio({ settings, setSettings }) {
           className="player-area"
           style={{ minHeight: '400px', position: 'relative' }}
         >
-          {!isSample && (
+          {!isSample && videoSrc && videoSrc !== 'sample' && (
             <video
               ref={videoRef}
               src={videoSrc}

@@ -3,6 +3,7 @@ import ImageDropzone from './ImageDropzone';
 import ControlsPanel from './ControlsPanel';
 import VisualStudio  from './VisualStudio';
 import BatchQueue    from './BatchQueue';
+import { OPEN_SOURCE_AI_MODELS } from '../engine/aiModelsRegistry';
 
 const D = {
   dl:      'M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z',
@@ -49,13 +50,50 @@ export default function ImageStudio({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
 
       {/* Mode Switcher */}
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <button className={`nav-pill ${studioMode === 'single' ? 'active' : ''}`} onClick={() => setStudioMode('single')}>
-          🖼️ SINGLE IMAGE STUDIO
-        </button>
-        <button className={`nav-pill ${studioMode === 'batch' ? 'active' : ''}`} onClick={() => setStudioMode('batch')}>
-          ⚡ BATCH IMAGE QUEUE
-        </button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className={`nav-pill ${studioMode === 'single' ? 'active' : ''}`} onClick={() => setStudioMode('single')}>
+            🖼️ SINGLE IMAGE STUDIO
+          </button>
+          <button className={`nav-pill ${studioMode === 'batch' ? 'active' : ''}`} onClick={() => setStudioMode('batch')}>
+            ⚡ BATCH IMAGE QUEUE
+          </button>
+        </div>
+      </div>
+
+      {/* Prominent Active Uploaded File Name Banner */}
+      <div style={{
+        padding: '0.75rem 1.2rem', borderRadius: '14px',
+        background: 'linear-gradient(135deg, rgba(var(--primary-rgb),0.18), rgba(var(--secondary-rgb),0.08))',
+        border: '1px solid rgba(var(--primary-rgb),0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{
+            width: '36px', height: '36px', borderRadius: '10px',
+            background: 'rgba(var(--primary-rgb),0.2)', border: '1px solid rgba(var(--primary-rgb),0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem'
+          }}>
+            📁
+          </div>
+          <div>
+            <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', fontWeight: 800, letterSpacing: '0.08em', display: 'block' }}>
+              ACTIVE UPLOADED IMAGE FILE
+            </span>
+            <span style={{ fontSize: '0.95rem', color: 'var(--primary)', fontWeight: 900 }}>
+              {currentImage.name || 'Untitled Image'}
+            </span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, background: 'rgba(0,0,0,0.35)', padding: '0.35rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+            📐 {currentImage.width} × {currentImage.height} px
+          </span>
+          <span style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: 800, background: 'rgba(var(--primary-rgb),0.12)', padding: '0.35rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(var(--primary-rgb),0.3)' }}>
+            💾 {currentImage.size ? `${(currentImage.size/1024).toFixed(1)} KB` : 'Sample'}
+          </span>
+        </div>
       </div>
 
       {/* ============================================================
@@ -106,6 +144,12 @@ export default function ImageStudio({
               {ur && <span className="card-header-badge">COMPUTED</span>}
             </div>
             <div className="card-body" style={{ gap: '0.5rem' }}>
+              <div className="atile">
+                <span className="atile-label">Active AI Model</span>
+                <span className="atile-val" style={{ color: 'var(--primary)', fontWeight: 800 }}>
+                  {OPEN_SOURCE_AI_MODELS[settings.model]?.badge || '★ MASTER FUSION'}
+                </span>
+              </div>
               <div className="atile">
                 <span className="atile-label">Sub-Pixels Synthesized</span>
                 <span className="atile-val g">+{ur?.metrics?.synthesizedPixels || '—'}</span>

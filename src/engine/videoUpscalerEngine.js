@@ -92,31 +92,33 @@ export function generateSampleVideoCanvas() {
 
   /* Synthetic Web Audio API Audio Stream */
   let audioTrack = null;
+  let audioCtx = null;
   try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (AudioContext) {
-      const audioCtx = new AudioContext();
-      const dest = audioCtx.createMediaStreamDestination();
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (AudioContextClass) {
+      audioCtx = new AudioContextClass();
+      if (audioCtx.state === 'running') {
+        const dest = audioCtx.createMediaStreamDestination();
+        const osc1 = audioCtx.createOscillator();
+        const osc2 = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
 
-      const osc1 = audioCtx.createOscillator();
-      const osc2 = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(220, audioCtx.currentTime);
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(329.63, audioCtx.currentTime);
 
-      osc1.type = 'sine';
-      osc1.frequency.setValueAtTime(220, audioCtx.currentTime); // A3
-      osc2.type = 'triangle';
-      osc2.frequency.setValueAtTime(329.63, audioCtx.currentTime); // E4
+        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
 
-      gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(dest);
 
-      osc1.connect(gain);
-      osc2.connect(gain);
-      gain.connect(dest);
+        osc1.start();
+        osc2.start();
 
-      osc1.start();
-      osc2.start();
-
-      audioTrack = dest.stream.getAudioTracks()[0];
+        audioTrack = dest.stream.getAudioTracks()[0];
+      }
     }
   } catch (e) {
     console.warn('Web Audio synthetic stream fallback:', e);
@@ -187,16 +189,18 @@ export function generateSampleVideoCanvas() {
     ctx.font = '11px "JetBrains Mono", monospace';
     ctx.fillText('WebGPU Multi-Pass Real-Time Super-Resolution Engine', 20, 56);
 
-    // Synthetic compression noise & pixelation simulation
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = 160;
-    tempCanvas.height = 90;
-    const tempCtx = tempCanvas.getContext('2d');
+    // Reuse persistent temp canvas for compression noise simulation (prevents GC stalls)
     tempCtx.drawImage(canvas, 0, 0, w, h, 0, 0, 160, 90);
     ctx.drawImage(tempCanvas, 0, 0, 160, 90, 0, 0, w, h);
 
     animId = requestAnimationFrame(renderFrame);
   };
+
+  // Instantiate temp canvas once outside render loop to maintain 60-120 FPS
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = 160;
+  tempCanvas.height = 90;
+  const tempCtx = tempCanvas.getContext('2d');
 
   renderFrame();
 

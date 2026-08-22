@@ -31,7 +31,7 @@ export class WebGLVideoEngine {
     }
     const probe = document.createElement('canvas');
     if (probe.getContext('webgl2')) return 'webgl2';
-    if (probe.getContext('webgl'))  return 'webgl';
+    if (probe.getContext('webgl') || probe.getContext('experimental-webgl')) return 'webgl';
     return 'none';
   }
 
@@ -46,12 +46,22 @@ export class WebGLVideoEngine {
       powerPreference: 'high-performance',
     });
 
-    if (!this.gl) throw new Error('WebGL2 is required but not supported in this browser.');
+    this.isWebGL2 = !!this.gl;
+
+    if (!this.gl) {
+      // WebGL1 Fallback for legacy / mobile devices
+      this.gl = canvas.getContext('webgl', { preserveDrawingBuffer: true, alpha: false }) ||
+                canvas.getContext('experimental-webgl', { preserveDrawingBuffer: true, alpha: false });
+    }
+
+    if (!this.gl) throw new Error('WebGL is not supported on this browser or device.');
 
     const gl = this.gl;
 
-    // Check for float texture support (RGBA16F FBOs)
-    this.hasFloatFBO = !!gl.getExtension('EXT_color_buffer_float');
+    // Check for float texture support
+    this.hasFloatFBO = this.isWebGL2
+      ? !!gl.getExtension('EXT_color_buffer_float')
+      : !!(gl.getExtension('OES_texture_float') || gl.getExtension('OES_texture_half_float'));
 
     this._initPrograms();
     this._initVAO();
@@ -62,275 +72,396 @@ export class WebGLVideoEngine {
     this._lastSrcH = 0;
     this._lastDstW = 0;
     this._lastDstH = 0;
-    this._frameIndex = 0; // For TAA ping-pong
+    this._frameIndex = 0;
   }
 
   // ─────────────────────────────────────────────────────────────────
-  // SHADER SOURCES
+  // SHADER SOURCES (Dual WebGL2 #version 300 es & WebGL1 #version 100)
   // ─────────────────────────────────────────────────────────────────
 
   _vsSource() {
-    return `#version 300 es
-    in vec2 a_pos;
-    in vec2 a_uv;
-    out vec2 v_uv;
+    if (this.isWebGL2) {
+      return `#version 300 es
+      in vec2 a_pos;
+      in vec2 a_uv;
+      out vec2 v_uv;
+      void main() {
+        gl_Position = vec4(a_pos, 0.0, 1.0);
+        v_uv = vec2(a_uv.x, 1.0 - a_uv.y);
+      }`;
+    }
+    return `
+    attribute vec2 a_pos;
+    attribute vec2 a_uv;
+    varying vec2 v_uv;
     void main() {
       gl_Position = vec4(a_pos, 0.0, 1.0);
-      // Flip Y for canvas coordinate system
       v_uv = vec2(a_uv.x, 1.0 - a_uv.y);
     }`;
   }
 
-  // PASS 1: EASU — Edge-Adaptive Spatial Upsampling (FSR 1.0 inspired)
-  // Samples 4 neighbours using Lanczos-based elliptical filter, adapts to edges
+  // PASS 1: EASU — Edge-Adaptive Spatial Upsampling with directional edge enhancement
   _fsEASU() {
-    return `#version 300 es
-    precision highp float;
-    in vec2 v_uv;
-    out vec4 fragColor;
+    if (this.isWebGL2) {
+      return `#version 300 es
+      precision highp float;
+      in vec2 v_uv;
+      out vec4 fragColor;
 
-    uniform sampler2D u_src;
-    uniform vec2 u_srcSize;   // source texture pixel dimensions
-    uniform vec2 u_dstSize;   // output pixel dimensions
+      uniform sampler2D u_src;
+      uniform vec2 u_srcSize;
+      uniform vec2 u_dstSize;
 
-    // Lanczos 2-tap approximation weight
-    float lanczos(float x) {
-      x = abs(x);
-      if (x < 0.001) return 1.0;
-      if (x >= 2.0) return 0.0;
-      float px = 3.14159265 * x;
-      float px2 = px * 0.5;
-      return (sin(px) / px) * (sin(px2) / px2);
-    }
-
-    // Sample with edge-adaptive offset based on local gradient
-    vec4 easuSample(vec2 uv, vec2 rcpSrc) {
-      // 4-corner gradient estimation for edge detection
-      vec4 c  = texture(u_src, uv);
-      vec4 n  = texture(u_src, uv + vec2(0.0, -rcpSrc.y));
-      vec4 s  = texture(u_src, uv + vec2(0.0,  rcpSrc.y));
-      vec4 e  = texture(u_src, uv + vec2( rcpSrc.x, 0.0));
-      vec4 w  = texture(u_src, uv + vec2(-rcpSrc.x, 0.0));
-
-      // Detect edge direction (luma gradient)
-      float lumC = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
-      float lumN = dot(n.rgb, vec3(0.2126, 0.7152, 0.0722));
-      float lumS = dot(s.rgb, vec3(0.2126, 0.7152, 0.0722));
-      float lumE = dot(e.rgb, vec3(0.2126, 0.7152, 0.0722));
-      float lumW = dot(w.rgb, vec3(0.2126, 0.7152, 0.0722));
-
-      float dH = abs(lumE - lumW);
-      float dV = abs(lumN - lumS);
-      float edgeStrength = clamp((dH + dV) * 4.0, 0.0, 1.0);
-
-      // Sub-pixel position in source texture
-      vec2 srcPixel = uv * u_srcSize - 0.5;
-      vec2 fi = floor(srcPixel);
-      vec2 frac = srcPixel - fi;
-
-      // Lanczos 4-tap kernel
-      vec4 col = vec4(0.0);
-      float wTotal = 0.0;
-      for (int iy = -1; iy <= 2; iy++) {
-        float wy = lanczos(float(iy) - frac.y);
-        for (int ix = -1; ix <= 2; ix++) {
-          float wx = lanczos(float(ix) - frac.x);
-          float wt = wx * wy;  // Bug4 fixed: renamed w→wt to avoid shadowing outer vec4 w
-          vec2 sampleUV = (fi + vec2(float(ix), float(iy)) + 0.5) / u_srcSize;
-          col += texture(u_src, clamp(sampleUV, vec2(0.0), vec2(1.0))) * wt;
-          wTotal += wt;
-        }
+      float lanczos(float x) {
+        x = abs(x);
+        if (x < 0.001) return 1.0;
+        if (x >= 2.0) return 0.0;
+        float px = 3.1415926535 * x;
+        float px2 = px * 0.5;
+        return (sin(px) / px) * (sin(px2) / px2);
       }
-      col /= max(wTotal, 0.0001);
 
-      // Blend edge-adaptive result with bilinear for stability
-      vec4 bilinear = texture(u_src, uv);
-      return mix(bilinear, col, 0.85 + edgeStrength * 0.15);
+      void main() {
+        vec2 rcpSrc = 1.0 / u_srcSize;
+        vec4 c  = texture(u_src, v_uv);
+        vec4 n  = texture(u_src, v_uv + vec2(0.0, -rcpSrc.y));
+        vec4 s  = texture(u_src, v_uv + vec2(0.0,  rcpSrc.y));
+        vec4 e  = texture(u_src, v_uv + vec2( rcpSrc.x, 0.0));
+        vec4 w  = texture(u_src, v_uv + vec2(-rcpSrc.x, 0.0));
+
+        float lumC = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+        float lumN = dot(n.rgb, vec3(0.2126, 0.7152, 0.0722));
+        float lumS = dot(s.rgb, vec3(0.2126, 0.7152, 0.0722));
+        float lumE = dot(e.rgb, vec3(0.2126, 0.7152, 0.0722));
+        float lumW = dot(w.rgb, vec3(0.2126, 0.7152, 0.0722));
+
+        float dH = abs(lumE - lumW);
+        float dV = abs(lumN - lumS);
+        float edgeStrength = clamp((dH + dV) * 6.0, 0.0, 1.0);
+
+        vec2 srcPixel = v_uv * u_srcSize - 0.5;
+        vec2 fi = floor(srcPixel);
+        vec2 frac = srcPixel - fi;
+
+        vec4 col = vec4(0.0);
+        float wTotal = 0.0;
+        for (int iy = -1; iy <= 2; iy++) {
+          float wy = lanczos(float(iy) - frac.y);
+          for (int ix = -1; ix <= 2; ix++) {
+            float wx = lanczos(float(ix) - frac.x);
+            float wt = wx * wy;
+            vec2 sampleUV = (fi + vec2(float(ix), float(iy)) + 0.5) / u_srcSize;
+            col += texture(u_src, clamp(sampleUV, vec2(0.0), vec2(1.0))) * wt;
+            wTotal += wt;
+          }
+        }
+        col /= max(wTotal, 0.0001);
+
+        // Directional sub-pixel edge sharpening boost
+        vec4 edgeDetail = c + (c - (n + s + e + w) * 0.25) * (0.8 + edgeStrength * 1.2);
+
+        fragColor = clamp(mix(col, edgeDetail, 0.45 + edgeStrength * 0.45), 0.0, 1.0);
+      }`;
     }
+
+    // WebGL 1 Shader
+    return `
+    precision highp float;
+    varying vec2 v_uv;
+    uniform sampler2D u_src;
+    uniform vec2 u_srcSize;
+    uniform vec2 u_dstSize;
 
     void main() {
       vec2 rcpSrc = 1.0 / u_srcSize;
-      fragColor = easuSample(v_uv, rcpSrc);
+      vec4 c  = texture2D(u_src, v_uv);
+      vec4 n  = texture2D(u_src, v_uv + vec2(0.0, -rcpSrc.y));
+      vec4 s  = texture2D(u_src, v_uv + vec2(0.0,  rcpSrc.y));
+      vec4 e  = texture2D(u_src, v_uv + vec2( rcpSrc.x, 0.0));
+      vec4 w  = texture2D(u_src, v_uv + vec2(-rcpSrc.x, 0.0));
+
+      vec4 laplacian = c - (n + s + e + w) * 0.25;
+      vec4 sharp = c + laplacian * 1.5;
+
     }`;
   }
 
-  // PASS 2: RCAS — Robust Contrast Adaptive Sharpening (AMD FSR Post-Process)
-  // Applied AFTER upscaling to restore high-frequency details lost during EASU
-  _fsRCAS() {
-    return `#version 300 es
-    precision highp float;
-    in vec2 v_uv;
-    out vec4 fragColor;
-
-    uniform sampler2D u_upscaled; // Output of EASU pass
-    uniform vec2 u_dstSize;
-    uniform float u_sharpness;    // 0.0 = no sharpen, 1.0 = max sharpen
-    uniform float u_clarity;      // Detail micro-contrast boost
-
-    void main() {
-      vec2 rcpDst = 1.0 / u_dstSize;
-
-      // RCAS 4-tap neighbourhood (cardinal only — no diagonals for speed)
-      vec4 cN = texture(u_upscaled, v_uv + vec2( 0.0,       -rcpDst.y));
-      vec4 cW = texture(u_upscaled, v_uv + vec2(-rcpDst.x,   0.0     ));
-      vec4 cC = texture(u_upscaled, v_uv);
-      vec4 cE = texture(u_upscaled, v_uv + vec2( rcpDst.x,   0.0     ));
-      vec4 cS = texture(u_upscaled, v_uv + vec2( 0.0,        rcpDst.y));
-
-      // Min/Max for contrast-adaptive weight
-      vec4 vMin = min(cC, min(min(cN, cW), min(cE, cS)));
-      vec4 vMax = max(cC, max(max(cN, cW), max(cE, cS)));
-
-      // Contrast ratio weight — high contrast areas get less sharpening (prevents halos)
-      vec4 rcpContrast = vec4(1.0) / max(vMax - vMin, vec4(0.0001));
+  // PASS 1.5: Anime4K Edge Refinement & Vector Line Art Enhancement
+  _fsAnime4K() {
+    if (this.isWebGL2) {
+      return `#version 300 es
+      precision highp float;
+      in vec2 v_uv;
+      out vec4 fragColor;
       
-      // RCAS sharpening amount — AMD formula: negative lobe = 1/4 * sharpAmount
-      float sharpAmt = u_sharpness * 0.35 + u_clarity * 0.15;
-      vec4 amp = clamp(min(vMin, vec4(1.0) - vMax) * rcpContrast, 0.0, 1.0);
-      float rcasW = -(1.0 / (sqrt(amp.r + amp.g + amp.b + 0.0001) * (sharpAmt * 8.0 + 0.5)));
-
-      // Apply sharpening kernel
-      float wBase = 1.0 - rcasW * 4.0;
-      fragColor = clamp(
-        (cN + cW + cE + cS) * rcasW + cC * wBase,
-        0.0, 1.0
-      );
-    }`;
+      uniform sampler2D u_src;
+      uniform vec2 u_dstSize;
+      
+      void main() {
+        vec2 d = 1.0 / u_dstSize;
+        vec4 c = texture(u_src, v_uv);
+        
+        vec4 t = texture(u_src, v_uv + vec2(0.0, -d.y));
+        vec4 b = texture(u_src, v_uv + vec2(0.0, d.y));
+        vec4 l = texture(u_src, v_uv + vec2(-d.x, 0.0));
+        vec4 r = texture(u_src, v_uv + vec2(d.x, 0.0));
+        
+        vec4 minCol = min(c, min(t, min(b, min(l, r))));
+        
+        // Darken edges slightly (vector line thinning)
+        float lum = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+        float pushStrength = 0.65;
+        vec4 finalCol = mix(c, minCol, pushStrength * (1.0 - lum));
+        fragColor = clamp(finalCol, 0.0, 1.0);
+      }`;
+    }
+    return `
+    precision highp float;
+    varying vec2 v_uv;
+    uniform sampler2D u_src;
+    void main() { gl_FragColor = texture2D(u_src, v_uv); }
+    `;
   }
 
-  // PASS 3: Color Enhancement — HDR, LUT grading, temperature, grain
-  _fsColor() {
-    return `#version 300 es
-    precision highp float;
-    in vec2 v_uv;
-    out vec4 fragColor;
+  // PASS 2: RCAS — Robust Contrast Adaptive Sharpening with High-Frequency Edge Enhancement
+  _fsRCAS() {
+    if (this.isWebGL2) {
+      return `#version 300 es
+      precision highp float;
+      in vec2 v_uv;
+      out vec4 fragColor;
 
-    uniform sampler2D u_sharpened; // Output of RCAS pass
-    uniform float u_hdr;           // 0-100
-    uniform float u_temp;          // -50 to +50
-    uniform float u_grain;         // 0-10
-    uniform int   u_lutMode;       // 0:none, 1:cinematic, 2:filmic, 3:vintage, 4:cool, 5:cyber, 6:golden
-    uniform float u_time;          // For animated grain
+      uniform sampler2D u_upscaled;
+      uniform vec2 u_dstSize;
+      uniform float u_sharpness;
+      uniform float u_clarity;
+      uniform int   u_modelMode;
 
-    // Fast hash for grain (no branches, GPU-friendly)
-    float hash(vec2 p) {
-      p = fract(p * vec2(234.34, 435.345));
-      p += dot(p, p + 34.23);
-      return fract(p.x * p.y);
-    }
+      void main() {
+        vec2 rcpDst = 1.0 / u_dstSize;
 
-    // Rec.709 luma
-    float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+        vec4 cN = texture(u_upscaled, v_uv + vec2( 0.0,       -rcpDst.y));
+        vec4 cW = texture(u_upscaled, v_uv + vec2(-rcpDst.x,   0.0     ));
+        vec4 cC = texture(u_upscaled, v_uv);
+        vec4 cE = texture(u_upscaled, v_uv + vec2( rcpDst.x,   0.0     ));
+        vec4 cS = texture(u_upscaled, v_uv + vec2( 0.0,        rcpDst.y));
 
-    // Tonemapper for HDR lift (ACES approximation)
-    vec3 aces(vec3 x) {
-      float a = 2.51, b = 0.03, c2 = 2.43, d = 0.59, e2 = 0.14;
-      return clamp((x * (a * x + b)) / (x * (c2 * x + d) + e2), 0.0, 1.0);
-    }
+        vec4 vMin = min(cC, min(min(cN, cW), min(cE, cS)));
+        vec4 vMax = max(cC, max(max(cN, cW), max(cE, cS)));
 
-    void main() {
-      vec4 col = texture(u_sharpened, v_uv);
-      vec3 c = col.rgb;
-      float lum = luma(c);
-
-      // ── 1. HDR Lift & Saturation ──
-      float hdrStrength = u_hdr / 100.0;
-      // Lift shadows + compress highlights (S-curve)
-      c = mix(c, aces(c * (1.0 + hdrStrength * 0.6)), hdrStrength * 0.5);
-      // Saturation boost
-      float satBoost = 1.0 + hdrStrength * 0.55;
-      c = mix(vec3(lum), c, satBoost);
-
-      // ── 2. Color Temperature ──
-      // Warm shift: boost red/green, reduce blue
-      float tNorm = u_temp / 50.0;
-      c.r += tNorm * 0.1;
-      c.g += tNorm * 0.04;
-      c.b -= tNorm * 0.12;
-
-      // ── 3. 3D LUT Color Grading ──
-      float lumNew = luma(c);
-      if (u_lutMode == 1) { // Cinematic Teal & Orange
-        vec3 teal   = vec3(0.0, 0.8, 1.0);
-        vec3 orange = vec3(1.0, 0.55, 0.1);
-        vec3 grade  = mix(teal, orange, lumNew);
-        c = mix(c, c * grade * 1.08, 0.22);
-        c.b = pow(max(c.b, 0.0), 1.12) * 0.85;
-        c.r = pow(max(c.r, 0.0), 0.88) * 1.12;
-      } else if (u_lutMode == 2) { // Filmic Pro (Log→Rec.709)
-        c = pow(max(c, vec3(0.0)), vec3(0.92)) * 1.06;
-        c = mix(c, vec3(lumNew), 0.04); // Slight desaturate for film look
-      } else if (u_lutMode == 3) { // Vintage 35mm
-        c.r *= 1.14; c.g *= 1.04; c.b *= 0.80;
-        c = mix(c, vec3(lumNew), 0.08); // Faded film
-        c = pow(max(c, vec3(0.0)), vec3(0.96));
-      } else if (u_lutMode == 4) { // Cool Blue Noir
-        c.r *= 0.82; c.b *= 1.28; c.g *= 0.92;
-        c = mix(c, vec3(lumNew), 0.12); // Desaturate slightly
-      } else if (u_lutMode == 5) { // Cyber Neon
-        c.r = pow(max(c.r, 0.0), 0.80) * 1.30;
-        c.b = pow(max(c.b, 0.0), 0.78) * 1.40;
-        c.g *= 0.85;
-        float bloom = max(c.r + c.b - 1.2, 0.0) * 0.3;
-        c.r = min(c.r + bloom * 0.4, 1.0);
-        c.b = min(c.b + bloom * 0.6, 1.0);
-      } else if (u_lutMode == 6) { // Golden Hour
-        c.r *= 1.24; c.g *= 1.10; c.b *= 0.78;
-        c = mix(c, vec3(lumNew * 1.04), 0.05);
-      }
-
-      // ── 4. Organic Film Grain ──
-      float grainStrength = (u_grain / 10.0) * 0.045;
-      float noise = (hash(v_uv * 2000.0 + u_time * 0.01) - 0.5) * grainStrength;
-      // Add more grain in midtones, less in highlights/shadows
-      float grainMask = 1.0 - abs(lumNew - 0.5) * 1.6;
-      c += noise * max(grainMask, 0.0);
-
-      fragColor = vec4(clamp(c, 0.0, 1.0), col.a);
-    }`;
-  }
-
-  // PASS 4: TAA — Temporal Anti-Aliasing & Flicker Reduction (Unreal Engine / TAA style)
-  _fsTAA() {
-    return `#version 300 es
-    precision highp float;
-    in vec2 v_uv;
-    out vec4 fragColor;
-
-    uniform sampler2D u_current;
-    uniform sampler2D u_history;
-    uniform vec2 u_dstSize;
-    uniform float u_blendWeight; // e.g. 0.85 (85% history, 15% current frame)
-
-    void main() {
-      vec4 cur  = texture(u_current, v_uv);
-      vec4 hist = texture(u_history, v_uv);
-
-      // 3x3 neighbourhood bounding box clamping to eliminate ghosting / motion trails
-      vec2 rcpDst = 1.0 / u_dstSize;
-      vec3 minCol = cur.rgb;
-      vec3 maxCol = cur.rgb;
-
-      for (int x = -1; x <= 1; x++) {
-        for (int y = -1; y <= 1; y++) {
-          if (x == 0 && y == 0) continue;
-          vec3 nCol = texture(u_current, v_uv + vec2(float(x), float(y)) * rcpDst).rgb;
-          minCol = min(minCol, nCol);
-          maxCol = max(maxCol, nCol);
+        vec4 rcpContrast = vec4(1.0) / max(vMax - vMin, vec4(0.0001));
+        
+        float sharpAmt = clamp(u_sharpness * 0.8 + u_clarity * 0.6, 0.1, 2.5);
+        
+        // Model-specific profile tweaks
+        if (u_modelMode == 1) { // Real-ESRGAN x4+ (Photorealistic graphics)
+          sharpAmt *= 1.35;
+        } else if (u_modelMode == 2 || u_modelMode == 4) { // Real-ESRGAN Anime / CUGAN (2D Art)
+          sharpAmt *= 1.1;
+        } else if (u_modelMode == 3) { // CodeFormer / Proteus (Faces)
+          sharpAmt *= 0.95;
         }
+
+        vec4 amp = clamp(min(vMin, vec4(1.0) - vMax) * rcpContrast, 0.0, 1.0);
+        float rcasW = -(1.0 / (sqrt(amp.r + amp.g + amp.b + 0.0001) * (sharpAmt * 4.0 + 0.2)));
+
+        float wBase = 1.0 - rcasW * 4.0;
+        vec4 rcasCol = (cN + cW + cE + cS) * rcasW + cC * wBase;
+
+        // For Anime / CUGAN, preserve line art contours with less noise
+        float mixRatio = (u_modelMode == 2 || u_modelMode == 4) ? 0.45 : (u_modelMode == 1 ? 0.80 : 0.65);
+        
+        // RCAS is already contrast adaptive. Do NOT add a laplacian high-pass on top
+        // which causes deep-fried double-sharpening halos.
+        fragColor = clamp(rcasCol, 0.0, 1.0);
+      }`;
+    }
+
+    // WebGL 1 Shader
+    return `
+    precision highp float;
+    varying vec2 v_uv;
+    uniform sampler2D u_upscaled;
+    uniform vec2 u_dstSize;
+    uniform float u_sharpness;
+    uniform float u_clarity;
+
+    void main() {
+      vec2 rcpDst = 1.0 / u_dstSize;
+      vec4 cN = texture2D(u_upscaled, v_uv + vec2( 0.0,       -rcpDst.y));
+      vec4 cW = texture2D(u_upscaled, v_uv + vec2(-rcpDst.x,   0.0     ));
+      vec4 cC = texture2D(u_upscaled, v_uv);
+      vec4 cE = texture2D(u_upscaled, v_uv + vec2( rcpDst.x,   0.0     ));
+      vec4 cS = texture2D(u_upscaled, v_uv + vec2( 0.0,        rcpDst.y));
+
+      vec4 laplacian = cC - (cN + cW + cE + cS) * 0.25;
+      float mult = (u_sharpness * 1.5 + u_clarity * 1.0) * 0.5; // Reduced intensity for WebGL1 fallback to avoid halos
+      gl_FragColor = clamp(cC + laplacian * mult, 0.0, 1.0);
+    }`;
+  }
+
+  // PASS 3: Color & HDR Tone Mapping
+  _fsColor() {
+    if (this.isWebGL2) {
+      return `#version 300 es
+      precision highp float;
+      in vec2 v_uv;
+      out vec4 fragColor;
+
+      uniform sampler2D u_sharpened;
+      uniform float u_hdr;
+      uniform float u_temp;
+      uniform float u_grain;
+      uniform int   u_lutMode;
+      uniform float u_time;
+
+      float hash(vec2 p) {
+        p = fract(p * vec2(234.34, 435.345));
+        p += dot(p, p + 34.23);
+        return fract(p.x * p.y);
       }
 
-      // Clamp history color to current neighbourhood min/max
-      vec3 clampedHist = clamp(hist.rgb, minCol, maxCol);
+      float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 
-      // Blend current frame with motion-clamped history
-      vec3 finalCol = mix(cur.rgb, clampedHist, u_blendWeight);
-      fragColor = vec4(finalCol, cur.a);
+      vec3 aces(vec3 x) {
+        float a = 2.51, b = 0.03, c2 = 2.43, d = 0.59, e2 = 0.14;
+        return clamp((x * (a * x + b)) / (x * (c2 * x + d) + e2), 0.0, 1.0);
+      }
+
+      void main() {
+        vec4 col = texture(u_sharpened, v_uv);
+        vec3 c = col.rgb;
+        float lum = luma(c);
+
+        float hdrStrength = u_hdr / 100.0;
+        c = mix(c, aces(c * (1.0 + hdrStrength * 0.6)), hdrStrength * 0.5);
+        float satBoost = 1.0 + hdrStrength * 0.55;
+        c = mix(vec3(lum), c, satBoost);
+
+        float tNorm = u_temp / 50.0;
+        c.r += tNorm * 0.1;
+        c.g += tNorm * 0.04;
+        c.b -= tNorm * 0.12;
+
+        float lumNew = luma(c);
+        if (u_lutMode == 1) {
+          vec3 teal   = vec3(0.0, 0.8, 1.0);
+          vec3 orange = vec3(1.0, 0.55, 0.1);
+          vec3 grade  = mix(teal, orange, lumNew);
+          c = mix(c, c * grade * 1.08, 0.22);
+          c.b = pow(max(c.b, 0.0), 1.12) * 0.85;
+          c.r = pow(max(c.r, 0.0), 0.88) * 1.12;
+        } else if (u_lutMode == 2) {
+          c = pow(max(c, vec3(0.0)), vec3(0.92)) * 1.06;
+          c = mix(c, vec3(lumNew), 0.04);
+        } else if (u_lutMode == 3) {
+          c.r *= 1.14; c.g *= 1.04; c.b *= 0.80;
+          c = mix(c, vec3(lumNew), 0.08);
+          c = pow(max(c, vec3(0.0)), vec3(0.96));
+        } else if (u_lutMode == 4) {
+          c.r *= 0.82; c.b *= 1.28; c.g *= 0.92;
+          c = mix(c, vec3(lumNew), 0.12);
+        } else if (u_lutMode == 5) {
+          c.r = pow(max(c.r, 0.0), 0.80) * 1.30;
+          c.b = pow(max(c.b, 0.0), 0.78) * 1.40;
+          c.g *= 0.85;
+        } else if (u_lutMode == 6) {
+          c.r *= 1.24; c.g *= 1.10; c.b *= 0.78;
+        }
+
+        float grainStrength = (u_grain / 10.0) * 0.045;
+        float noise = (hash(v_uv * 2000.0 + u_time * 0.01) - 0.5) * grainStrength;
+        float grainMask = 1.0 - abs(lumNew - 0.5) * 1.6;
+        c += noise * max(grainMask, 0.0);
+
+        fragColor = vec4(clamp(c, 0.0, 1.0), col.a);
+      }`;
+    }
+
+    // WebGL 1 Shader
+    return `
+    precision highp float;
+    varying vec2 v_uv;
+    uniform sampler2D u_sharpened;
+    uniform float u_hdr;
+    uniform float u_temp;
+
+    void main() {
+      vec4 col = texture2D(u_sharpened, v_uv);
+      vec3 c = col.rgb;
+      float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+
+      float hdrStrength = u_hdr / 100.0;
+      c = mix(vec3(lum), c, 1.0 + hdrStrength * 0.4);
+
+      float tNorm = u_temp / 50.0;
+      c.r += tNorm * 0.08;
+      c.b -= tNorm * 0.08;
+
+      gl_FragColor = vec4(clamp(c, 0.0, 1.0), col.a);
+    }`;
+  }
+
+  // PASS 4: TAA (Temporal Anti-Aliasing with detail preservation)
+  _fsTAA() {
+    if (this.isWebGL2) {
+      return `#version 300 es
+      precision highp float;
+      in vec2 v_uv;
+      out vec4 fragColor;
+
+      uniform sampler2D u_current;
+      uniform sampler2D u_history;
+      uniform vec2 u_dstSize;
+      uniform float u_blendWeight;
+
+      void main() {
+        vec4 cur  = texture(u_current, v_uv);
+        vec4 hist = texture(u_history, v_uv);
+
+        vec2 rcpDst = 1.0 / u_dstSize;
+        vec3 minCol = cur.rgb;
+        vec3 maxCol = cur.rgb;
+
+        for (int x = -1; x <= 1; x++) {
+          for (int y = -1; y <= 1; y++) {
+            if (x == 0 && y == 0) continue;
+            vec3 nCol = texture(u_current, v_uv + vec2(float(x), float(y)) * rcpDst).rgb;
+            minCol = min(minCol, nCol);
+            maxCol = max(maxCol, nCol);
+          }
+        }
+
+        vec3 clampedHist = clamp(hist.rgb, minCol, maxCol);
+        
+        // Luminance-based Motion Detection for Smart Temporal Denoise
+        float lumCur = dot(cur.rgb, vec3(0.2126, 0.7152, 0.0722));
+        float lumHist = dot(hist.rgb, vec3(0.2126, 0.7152, 0.0722));
+        float lumDiff = abs(lumCur - lumHist);
+        
+        // If luminance changes significantly (motion), reduce blend weight to prevent ghosting
+        float motionFactor = smoothstep(0.02, 0.15, lumDiff);
+        
+        // Use lower blend weight (0.35 max) and drop to 0.0 on fast motion
+        float effectiveWeight = min(u_blendWeight, 0.35) * (1.0 - motionFactor);
+        
+        vec3 finalCol = mix(cur.rgb, clampedHist, effectiveWeight);
+        fragColor = vec4(finalCol, cur.a);
+      }`;
+    }
+
+    // WebGL 1 Shader
+    return `
+    precision highp float;
+    varying vec2 v_uv;
+    uniform sampler2D u_current;
+    void main() {
+      gl_FragColor = texture2D(u_current, v_uv);
     }`;
   }
 
   // ─────────────────────────────────────────────────────────────────
-  // INITIALIZATION
+  // INITIALIZATION & PROGRAM CREATION
   // ─────────────────────────────────────────────────────────────────
 
   _compileShader(type, src) {
@@ -364,32 +495,37 @@ export class WebGLVideoEngine {
     const gl = this.gl;
     const vs = this._compileShader(gl.VERTEX_SHADER, this._vsSource());
 
-    const fsEASU  = this._compileShader(gl.FRAGMENT_SHADER, this._fsEASU());
-    const fsRCAS  = this._compileShader(gl.FRAGMENT_SHADER, this._fsRCAS());
-    const fsColor = this._compileShader(gl.FRAGMENT_SHADER, this._fsColor());
-    const fsTAA   = this._compileShader(gl.FRAGMENT_SHADER, this._fsTAA());
+    const fsEASU    = this._compileShader(gl.FRAGMENT_SHADER, this._fsEASU());
+    const fsAnime4K = this._compileShader(gl.FRAGMENT_SHADER, this._fsAnime4K());
+    const fsRCAS    = this._compileShader(gl.FRAGMENT_SHADER, this._fsRCAS());
+    const fsColor   = this._compileShader(gl.FRAGMENT_SHADER, this._fsColor());
+    const fsTAA     = this._compileShader(gl.FRAGMENT_SHADER, this._fsTAA());
 
-    this.progEASU  = this._linkProgram(vs, fsEASU);
-    this.progRCAS  = this._linkProgram(vs, fsRCAS);
-    this.progColor = this._linkProgram(vs, fsColor);
-    this.progTAA   = this._linkProgram(vs, fsTAA);
+    this.progEASU    = this._linkProgram(vs, fsEASU);
+    this.progAnime4K = this._linkProgram(vs, fsAnime4K);
+    this.progRCAS    = this._linkProgram(vs, fsRCAS);
+    this.progColor   = this._linkProgram(vs, fsColor);
+    this.progTAA     = this._linkProgram(vs, fsTAA);
 
-    // EASU uniforms
     this.locEASU = {
       src:     gl.getUniformLocation(this.progEASU, 'u_src'),
       srcSize: gl.getUniformLocation(this.progEASU, 'u_srcSize'),
       dstSize: gl.getUniformLocation(this.progEASU, 'u_dstSize'),
     };
+    
+    this.locAnime4K = {
+      src:     gl.getUniformLocation(this.progAnime4K, 'u_src'),
+      dstSize: gl.getUniformLocation(this.progAnime4K, 'u_dstSize'),
+    };
 
-    // RCAS uniforms
     this.locRCAS = {
       upscaled:  gl.getUniformLocation(this.progRCAS, 'u_upscaled'),
       dstSize:   gl.getUniformLocation(this.progRCAS, 'u_dstSize'),
       sharpness: gl.getUniformLocation(this.progRCAS, 'u_sharpness'),
       clarity:   gl.getUniformLocation(this.progRCAS, 'u_clarity'),
+      modelMode: gl.getUniformLocation(this.progRCAS, 'u_modelMode'),
     };
 
-    // Color uniforms
     this.locColor = {
       sharpened: gl.getUniformLocation(this.progColor, 'u_sharpened'),
       hdr:       gl.getUniformLocation(this.progColor, 'u_hdr'),
@@ -399,7 +535,6 @@ export class WebGLVideoEngine {
       time:      gl.getUniformLocation(this.progColor, 'u_time'),
     };
 
-    // TAA uniforms
     this.locTAA = {
       current:     gl.getUniformLocation(this.progTAA, 'u_current'),
       history:     gl.getUniformLocation(this.progTAA, 'u_history'),
@@ -410,8 +545,6 @@ export class WebGLVideoEngine {
 
   _initVAO() {
     const gl = this.gl;
-
-    // Full-screen quad (NDC)
     const positions = new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]);
     const uvs       = new Float32Array([ 0, 0, 1, 0,  0,1,  0,1, 1, 0, 1,1]);
 
@@ -423,31 +556,49 @@ export class WebGLVideoEngine {
     gl.bindBuffer(gl.ARRAY_BUFFER, uvBuf);
     gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW);
 
-    // Create a VAO for each program (share same geometry)
     this.vaos = {};
-    for (const [name, prog] of [['easu', this.progEASU], ['rcas', this.progRCAS], ['color', this.progColor], ['taa', this.progTAA]]) {
-      const vao = gl.createVertexArray();
-      gl.bindVertexArray(vao);
 
-      const posLoc = gl.getAttribLocation(prog, 'a_pos');
-      gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
-      gl.enableVertexAttribArray(posLoc);
-      gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+    if (this.isWebGL2) {
+      for (const [name, prog] of [['easu', this.progEASU], ['anime4k', this.progAnime4K], ['rcas', this.progRCAS], ['color', this.progColor], ['taa', this.progTAA]]) {
+        const vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
 
-      const uvLoc = gl.getAttribLocation(prog, 'a_uv');
-      gl.bindBuffer(gl.ARRAY_BUFFER, uvBuf);
-      gl.enableVertexAttribArray(uvLoc);
-      gl.vertexAttribPointer(uvLoc, 2, gl.FLOAT, false, 0, 0);
+        const posLoc = gl.getAttribLocation(prog, 'a_pos');
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
 
-      gl.bindVertexArray(null);
-      this.vaos[name] = vao;
+        const uvLoc = gl.getAttribLocation(prog, 'a_uv');
+        gl.bindBuffer(gl.ARRAY_BUFFER, uvBuf);
+        gl.enableVertexAttribArray(uvLoc);
+        gl.vertexAttribPointer(uvLoc, 2, gl.FLOAT, false, 0, 0);
+
+        gl.bindVertexArray(null);
+        this.vaos[name] = vao;
+      }
+    } else {
+      // WebGL 1 attribute pointers binding setup
+      this.posBuf = posBuf;
+      this.uvBuf = uvBuf;
     }
+  }
+
+  _bindAttributes(prog) {
+    const gl = this.gl;
+    const posLoc = gl.getAttribLocation(prog, 'a_pos');
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.posBuf);
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+    const uvLoc = gl.getAttribLocation(prog, 'a_uv');
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.uvBuf);
+    gl.enableVertexAttribArray(uvLoc);
+    gl.vertexAttribPointer(uvLoc, 2, gl.FLOAT, false, 0, 0);
   }
 
   _initTextures() {
     const gl = this.gl;
 
-    // Source video texture (updated every frame)
     this.srcTex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.srcTex);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -456,8 +607,8 @@ export class WebGLVideoEngine {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.bindTexture(gl.TEXTURE_2D, null);
 
-    // Intermediate textures for EASU, RCAS, Color & TAA history passes
     this.easuTex   = this._makeRenderTex(1, 1);
+    this.animeTex  = this._makeRenderTex(1, 1);
     this.rcasTex   = this._makeRenderTex(1, 1);
     this.colorTex  = this._makeRenderTex(1, 1);
     this.histTexA  = this._makeRenderTex(1, 1);
@@ -468,8 +619,8 @@ export class WebGLVideoEngine {
     const gl = this.gl;
     const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    const internalFmt = this.hasFloatFBO ? gl.RGBA16F : gl.RGBA8;
-    const type        = this.hasFloatFBO ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
+    const internalFmt = (this.isWebGL2 && this.hasFloatFBO) ? gl.RGBA16F : gl.RGBA;
+    const type        = (this.isWebGL2 && this.hasFloatFBO) ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
     gl.texImage2D(gl.TEXTURE_2D, 0, internalFmt, w, h, 0, gl.RGBA, type, null);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -482,25 +633,27 @@ export class WebGLVideoEngine {
   _resizeRenderTex(tex, w, h) {
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    const internalFmt = this.hasFloatFBO ? gl.RGBA16F : gl.RGBA8;
-    const type        = this.hasFloatFBO ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
+    const internalFmt = (this.isWebGL2 && this.hasFloatFBO) ? gl.RGBA16F : gl.RGBA;
+    const type        = (this.isWebGL2 && this.hasFloatFBO) ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
     gl.texImage2D(gl.TEXTURE_2D, 0, internalFmt, w, h, 0, gl.RGBA, type, null);
     gl.bindTexture(gl.TEXTURE_2D, null);
   }
 
   _initFBO() {
     const gl = this.gl;
-    this.fboEASU  = gl.createFramebuffer();
-    this.fboRCAS  = gl.createFramebuffer();
-    this.fboColor = gl.createFramebuffer();
-    this.fboHistA = gl.createFramebuffer();
-    this.fboHistB = gl.createFramebuffer();
+    this.fboEASU    = gl.createFramebuffer();
+    this.fboAnime4K = gl.createFramebuffer();
+    this.fboRCAS    = gl.createFramebuffer();
+    this.fboColor   = gl.createFramebuffer();
+    this.fboHistA   = gl.createFramebuffer();
+    this.fboHistB   = gl.createFramebuffer();
 
-    this._bindFBO(this.fboEASU,  this.easuTex);
-    this._bindFBO(this.fboRCAS,  this.rcasTex);
-    this._bindFBO(this.fboColor, this.colorTex);
-    this._bindFBO(this.fboHistA, this.histTexA);
-    this._bindFBO(this.fboHistB, this.histTexB);
+    this._bindFBO(this.fboEASU,    this.easuTex);
+    this._bindFBO(this.fboAnime4K, this.animeTex);
+    this._bindFBO(this.fboRCAS,    this.rcasTex);
+    this._bindFBO(this.fboColor,   this.colorTex);
+    this._bindFBO(this.fboHistA,   this.histTexA);
+    this._bindFBO(this.fboHistB,   this.histTexB);
   }
 
   _bindFBO(fbo, tex) {
@@ -513,7 +666,7 @@ export class WebGLVideoEngine {
       console.warn(`[WebGL] FBO incomplete (status=${status.toString(16)}). Falling back to RGBA8.`);
       this.hasFloatFBO = false;
       gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
     }
 
@@ -528,25 +681,23 @@ export class WebGLVideoEngine {
     const gl = this.gl;
     if (!videoSource) return;
 
-    // Source dimensions
     const srcW = videoSource.videoWidth  || videoSource.width  || 480;
     const srcH = videoSource.videoHeight || videoSource.height || 270;
     const dstW = gl.canvas.width;
     const dstH = gl.canvas.height;
 
-    // Resize intermediate textures if dimensions changed
     if (dstW !== this._lastDstW || dstH !== this._lastDstH) {
       this._resizeRenderTex(this.easuTex,  dstW, dstH);
+      this._resizeRenderTex(this.animeTex, dstW, dstH);
       this._resizeRenderTex(this.rcasTex,  dstW, dstH);
       this._resizeRenderTex(this.colorTex, dstW, dstH);
       this._resizeRenderTex(this.histTexA, dstW, dstH);
       this._resizeRenderTex(this.histTexB, dstW, dstH);
       this._lastDstW = dstW;
       this._lastDstH = dstH;
-      this._frameIndex = 0; // Reset temporal history on resize
+      this._frameIndex = 0;
     }
 
-    // ── Upload source video frame ──
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.srcTex);
     try {
@@ -558,42 +709,82 @@ export class WebGLVideoEngine {
         gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, videoSource);
       }
     } catch (e) {
-      console.warn('WebGL texImage2D error:', e);
-      return;
+      try {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, videoSource);
+        this._lastSrcW = srcW;
+        this._lastSrcH = srcH;
+      } catch (err2) {
+        console.warn('WebGL texImage2D error:', err2);
+        return;
+      }
     }
 
     const sharpness  = (settings.sharpness ?? 70) / 100;
     const clarity    = (settings.clarity   ?? 65) / 100;
     const lutNames   = { none:0, cinematic:1, filmic:2, vintage:3, cool:4, cyber:5, golden:6 };
     const lutMode    = lutNames[settings.lut || 'none'] ?? 0;
-    const enableTAA  = settings.enableTAA ?? true;
+    const enableTAA  = this.isWebGL2 && (settings.enableTAA ?? true);
     const now        = performance.now();
+
+    const modelMap = {
+      utkarsh_master: 0, utkarsh_master_fusion: 0, utkarsh_omni: 0,
+      realesrgan: 1, realesrgan_x4plus: 1,
+      realesrgan_anime_v3: 2,
+      codeformer_swinir: 3, proteus: 3,
+      waifu2x_cugan: 4, cugan: 4,
+      dione: 5,
+      huggingface_open_ai: 6,
+      webgpu_onnx_local: 7,
+      utkarsh_omni_absolute: 8
+    };
+    const modelMode = modelMap[settings.model || 'utkarsh_master_fusion'] ?? 0;
 
     // ─────── PASS 1: EASU ───────
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fboEASU);
     gl.viewport(0, 0, dstW, dstH);
     gl.useProgram(this.progEASU);
-    gl.bindVertexArray(this.vaos.easu);
+    if (this.isWebGL2) gl.bindVertexArray(this.vaos.easu);
+    else this._bindAttributes(this.progEASU);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.srcTex);
     gl.uniform1i(this.locEASU.src, 0);
-    gl.uniform2f(this.locEASU.srcSize, srcW, srcH);
-    gl.uniform2f(this.locEASU.dstSize, dstW, dstH);
+    if (this.locEASU.srcSize) gl.uniform2f(this.locEASU.srcSize, srcW, srcH);
+    if (this.locEASU.dstSize) gl.uniform2f(this.locEASU.dstSize, dstW, dstH);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    // ─────── PASS 1.5: Anime4K Edge Refinement ───────
+    let rcasInputTex = this.easuTex;
+    // Apply Anime4K for Omni-Fusion (8) or 2D Art (2, 4)
+    if (this.isWebGL2 && (modelMode === 8 || modelMode === 2 || modelMode === 4)) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fboAnime4K);
+      gl.viewport(0, 0, dstW, dstH);
+      gl.useProgram(this.progAnime4K);
+      gl.bindVertexArray(this.vaos.anime4k);
+      
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.easuTex);
+      gl.uniform1i(this.locAnime4K.src, 0);
+      gl.uniform2f(this.locAnime4K.dstSize, dstW, dstH);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      
+      rcasInputTex = this.animeTex;
+    }
 
     // ─────── PASS 2: RCAS ───────
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fboRCAS);
     gl.viewport(0, 0, dstW, dstH);
     gl.useProgram(this.progRCAS);
-    gl.bindVertexArray(this.vaos.rcas);
+    if (this.isWebGL2) gl.bindVertexArray(this.vaos.rcas);
+    else this._bindAttributes(this.progRCAS);
 
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.easuTex);
+    gl.bindTexture(gl.TEXTURE_2D, rcasInputTex);
     gl.uniform1i(this.locRCAS.upscaled, 0);
-    gl.uniform2f(this.locRCAS.dstSize, dstW, dstH);
+    if (this.locRCAS.dstSize) gl.uniform2f(this.locRCAS.dstSize, dstW, dstH);
     gl.uniform1f(this.locRCAS.sharpness, sharpness);
     gl.uniform1f(this.locRCAS.clarity,   clarity);
+    if (this.locRCAS.modelMode) gl.uniform1i(this.locRCAS.modelMode, modelMode);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     // ─────── PASS 3: Color ───────
@@ -601,24 +792,24 @@ export class WebGLVideoEngine {
     gl.bindFramebuffer(gl.FRAMEBUFFER, colorTargetFBO);
     gl.viewport(0, 0, dstW, dstH);
     gl.useProgram(this.progColor);
-    gl.bindVertexArray(this.vaos.color);
+    if (this.isWebGL2) gl.bindVertexArray(this.vaos.color);
+    else this._bindAttributes(this.progColor);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.rcasTex);
     gl.uniform1i(this.locColor.sharpened, 0);
     gl.uniform1f(this.locColor.hdr,     settings.hdr   ?? 40);
     gl.uniform1f(this.locColor.temp,    settings.temp  ?? 0);
-    gl.uniform1f(this.locColor.grain,   settings.grain ?? 2);
-    gl.uniform1i(this.locColor.lutMode, lutMode);
-    gl.uniform1f(this.locColor.time,    now);
+    if (this.locColor.grain)   gl.uniform1f(this.locColor.grain,   settings.grain ?? 2);
+    if (this.locColor.lutMode) gl.uniform1i(this.locColor.lutMode, lutMode);
+    if (this.locColor.time)    gl.uniform1f(this.locColor.time,    now);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-    // ─────── PASS 4: TAA (Temporal Anti-Aliasing) ───────
+    // ─────── PASS 4: TAA ───────
     if (enableTAA) {
       const readHistTex  = (this._frameIndex % 2 === 0) ? this.histTexA : this.histTexB;
       const writeHistFBO = (this._frameIndex % 2 === 0) ? this.fboHistB : this.fboHistA;
 
-      // Blend current color pass with history, output to canvas
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, dstW, dstH);
       gl.useProgram(this.progTAA);
@@ -633,12 +824,10 @@ export class WebGLVideoEngine {
       gl.uniform1i(this.locTAA.history, 1);
 
       gl.uniform2f(this.locTAA.dstSize, dstW, dstH);
-      // On first frame, don't blend history (weight = 0)
-      const blendWeight = (this._frameIndex === 0) ? 0.0 : (settings.taaWeight ?? 0.75);
+      const blendWeight = (this._frameIndex === 0) ? 0.0 : Math.min(settings.taaWeight ?? 0.35, 0.35);
       gl.uniform1f(this.locTAA.blendWeight, blendWeight);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-      // Save output into history FBO for next frame
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, writeHistFBO);
       gl.blitFramebuffer(0, 0, dstW, dstH, 0, 0, dstW, dstH, gl.COLOR_BUFFER_BIT, gl.NEAREST);
@@ -646,28 +835,34 @@ export class WebGLVideoEngine {
     }
 
     this._frameIndex++;
-    gl.bindVertexArray(null);
+    if (this.isWebGL2) gl.bindVertexArray(null);
   }
 
   destroy() {
     const gl = this.gl;
     gl.deleteTexture(this.srcTex);
     gl.deleteTexture(this.easuTex);
+    gl.deleteTexture(this.animeTex);
     gl.deleteTexture(this.rcasTex);
     gl.deleteTexture(this.colorTex);
     gl.deleteTexture(this.histTexA);
     gl.deleteTexture(this.histTexB);
 
     gl.deleteFramebuffer(this.fboEASU);
+    gl.deleteFramebuffer(this.fboAnime4K);
     gl.deleteFramebuffer(this.fboRCAS);
     gl.deleteFramebuffer(this.fboColor);
     gl.deleteFramebuffer(this.fboHistA);
     gl.deleteFramebuffer(this.fboHistB);
 
     gl.deleteProgram(this.progEASU);
+    gl.deleteProgram(this.progAnime4K);
     gl.deleteProgram(this.progRCAS);
     gl.deleteProgram(this.progColor);
     gl.deleteProgram(this.progTAA);
-    Object.values(this.vaos).forEach(v => gl.deleteVertexArray(v));
+    if (this.isWebGL2 && this.vaos) {
+      Object.values(this.vaos).forEach(v => gl.deleteVertexArray(v));
+    }
   }
 }
+

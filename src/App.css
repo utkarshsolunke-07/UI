@@ -715,6 +715,10 @@
   aspect-ratio: 16/9;
   overflow: hidden;
 }
+.player canvas, .player img, .split-layer img, .sbs-panel img, .quad-cell img {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
 
 /* Split Slider */
 .split-container, .split-wrap {

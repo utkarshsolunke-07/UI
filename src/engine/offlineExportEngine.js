@@ -24,8 +24,9 @@ export async function exportOfflineVideo(
     let worker = null;
 
     try {
-      const fps      = settings.fps === 'original' ? 30 : (Number(settings.fps) || 30);
-      const duration = videoElementSource.duration || 10;
+      const rawDur = videoElementSource.duration;
+      const duration = (rawDur && !isNaN(rawDur) && isFinite(rawDur)) ? rawDur : 10;
+      const fps = settings.targetFps || 60;
       const totalFrames = Math.floor(duration * fps);
 
       // Source dimensions
@@ -33,21 +34,16 @@ export async function exportOfflineVideo(
       const srcH   = videoElementSource.videoHeight || videoElementSource.height || 270;
       const aspect = (srcW && srcH) ? (srcW / srcH) : (16 / 9);
 
-      // Target export resolution (true upscale, not capped like preview)
-      const scale = settings.scale || 4;
+      // Target export resolution (true scale multiplier calculation)
+      const scale = settings.scale || 2;
       let dstW, dstH;
 
       if (settings.targetWidth && settings.targetHeight) {
         dstW = settings.targetWidth;
         dstH = settings.targetHeight;
-      } else if (scale <= 1.5) {
-        dstW = 1920; dstH = Math.round(1920 / aspect);
-      } else if (scale <= 2) {
-        dstW = 2560; dstH = Math.round(2560 / aspect);
-      } else if (scale <= 4) {
-        dstW = 3840; dstH = Math.round(3840 / aspect);
       } else {
-        dstW = 7680; dstH = Math.round(7680 / aspect);
+        dstW = Math.round(srcW * scale);
+        dstH = Math.round(srcH * scale);
       }
 
       // Force even (required by most codecs)
@@ -162,22 +158,24 @@ export async function exportOfflineVideo(
       for (let i = 0; i < totalFrames; i++) {
         const targetTime = i / fps;
 
-        // Seek to frame
+        // Seek to frame (skip seek if already at target timestamp, preventing frame 0 stall)
         if (isVideo) {
-          await new Promise((res) => {
-            let done = false;
-            const finish = () => { if (done) return; done = true; res(); };
+          if (Math.abs(videoElementSource.currentTime - targetTime) > 0.001) {
+            await new Promise((res) => {
+              let done = false;
+              const finish = () => { if (done) return; done = true; res(); };
 
-            const timeout = setTimeout(finish, 1500); // 1.5s max per frame
+              const timeout = setTimeout(finish, 500); // 500ms max seek wait
 
-            videoElementSource.addEventListener('seeked', function handler() {
-              videoElementSource.removeEventListener('seeked', handler);
-              clearTimeout(timeout);
-              finish();
-            }, { once: true });
+              videoElementSource.addEventListener('seeked', function handler() {
+                videoElementSource.removeEventListener('seeked', handler);
+                clearTimeout(timeout);
+                finish();
+              }, { once: true });
 
-            videoElementSource.currentTime = targetTime;
-          });
+              videoElementSource.currentTime = targetTime;
+            });
+          }
         } else {
           // Canvas source — just wait a tick
           await new Promise(r => requestAnimationFrame(r));
@@ -189,19 +187,10 @@ export async function exportOfflineVideo(
         // guarantees the video frame is decoded and ready for capture.
         let bitmap;
         try {
-          bitmap = await createImageBitmap(videoElementSource, {
-            resizeWidth:   srcW,
-            resizeHeight:  srcH,
-            resizeQuality: 'high',
-          });
+          bitmap = await createImageBitmap(videoElementSource);
         } catch (err) {
-          // Fallback: try without resize options (older browsers)
-          try {
-            bitmap = await createImageBitmap(videoElementSource);
-          } catch (err2) {
-            console.warn(`[Export] Frame ${i} createImageBitmap failed:`, err2);
-            continue; // Skip this frame rather than crash entire export
-          }
+          console.warn(`[Export] Frame ${i} createImageBitmap failed:`, err);
+          continue; // Skip this frame rather than crash entire export
         }
 
         // Send frame to worker

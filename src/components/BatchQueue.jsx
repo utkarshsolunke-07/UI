@@ -4,7 +4,8 @@ import {
   AlertCircle, Sparkles, FileArchive, ArrowUpRight
 } from 'lucide-react';
 import JSZip from 'jszip';
-import { upscaleImage, AI_MODELS } from '../engine/aiUpscalerEngine';
+import { upscaleImage } from '../engine/aiUpscalerEngine';
+import { OPEN_SOURCE_AI_MODELS } from '../engine/aiModelsRegistry';
 
 export default function BatchQueue({ globalSettings }) {
   const [queue, setQueue] = useState([]);
@@ -191,7 +192,7 @@ export default function BatchQueue({ globalSettings }) {
 
               <div className="queue-info-col">
                 <h4 className="queue-filename">{item.name}</h4>
-                <p className="queue-meta">{item.size} MB • Scale: {globalSettings.scale}x ({AI_MODELS[globalSettings.model]?.name})</p>
+                <p className="queue-meta">{item.size} MB • Scale: {globalSettings.scale}x ({OPEN_SOURCE_AI_MODELS[globalSettings.model]?.name})</p>
 
                 {item.status === 'processing' && (
                   <div className="queue-progress-bar">
