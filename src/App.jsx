@@ -4,6 +4,7 @@ import Header from './components/Header';
 import VideoStudio from './components/VideoStudio';
 import ImageStudio from './components/ImageStudio';
 import { upscaleImage } from './engine/aiUpscalerEngine';
+import { prewarmOfflineEngine } from './engine/offlineExportEngine';
 import './App.css';
 
 export default function App() {
@@ -39,6 +40,11 @@ export default function App() {
     };
     window.addEventListener('pointermove', handlePointerMove);
     return () => window.removeEventListener('pointermove', handlePointerMove);
+  }, []);
+
+  /* Pre-warm the export worker */
+  useEffect(() => {
+    prewarmOfflineEngine();
   }, []);
 
   /* ---- Image upload handler ---- */

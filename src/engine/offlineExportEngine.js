@@ -10,7 +10,21 @@
  *  - 4K (3840) target reference for scale=4 exports
  *  - 80 Mbps bitrate for 4K export
  *  - H.264 High Profile + VP9 codec probe order
+ *  - Worker Pre-warming for 0ms instant execution
  */
+
+let prewarmedWorker = null;
+
+export function prewarmOfflineEngine() {
+  if (typeof window !== 'undefined' && !prewarmedWorker) {
+    try {
+      prewarmedWorker = new Worker(new URL('./upscaleWorker.js', import.meta.url), { type: 'module' });
+      console.log('[Utkarsh AI] Export Engine Pre-warmed & Ready ⚡');
+    } catch (e) {
+      console.warn('Worker pre-warming failed:', e);
+    }
+  }
+}
 
 export async function exportOfflineVideo(
   videoElementSource,
@@ -124,8 +138,15 @@ export async function exportOfflineVideo(
         }
       }
 
-      // Initialize Worker
-      worker = new Worker(new URL('./upscaleWorker.js', import.meta.url), { type: 'module' });
+      // Initialize Worker (Use pre-warmed if available, else instantiate immediately)
+      if (prewarmedWorker) {
+        worker = prewarmedWorker;
+        prewarmedWorker = null; // consume
+        // Spin up a new one in the background for next time
+        setTimeout(prewarmOfflineEngine, 2000);
+      } else {
+        worker = new Worker(new URL('./upscaleWorker.js', import.meta.url), { type: 'module' });
+      }
 
       let resolveWorker = null;
       let rejectWorker  = null;

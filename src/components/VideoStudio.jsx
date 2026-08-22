@@ -588,8 +588,21 @@ export default function VideoStudio({ settings, setSettings }) {
             </span>
           </div>
           <div className="viewport-toolbar-right">
-            <span style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--primary)', padding: '0.35rem 0.85rem', background: 'rgba(var(--primary-rgb),0.12)', border: '1px solid rgba(var(--primary-rgb),0.3)', borderRadius: '99px', marginRight: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
-              🔳 DUAL SIDE-BY-SIDE COMPARISON STAGE
+            <span style={{ display: 'flex', gap: '0.4rem', marginRight: '0.5rem' }}>
+              <button 
+                className={`btn-secondary ${viewMode === 'side-by-side' ? 'active' : ''}`} 
+                style={{ fontSize: '0.68rem', padding: '0.35rem 0.75rem', background: viewMode === 'side-by-side' ? 'rgba(var(--primary-rgb),0.12)' : '', border: viewMode === 'side-by-side' ? '1px solid rgba(var(--primary-rgb),0.3)' : '' }} 
+                onClick={() => setViewMode('side-by-side')}
+              >
+                🔳 DUAL SIDE-BY-SIDE
+              </button>
+              <button 
+                className={`btn-secondary ${viewMode === 'split' ? 'active' : ''}`} 
+                style={{ fontSize: '0.68rem', padding: '0.35rem 0.75rem', background: viewMode === 'split' ? 'rgba(var(--primary-rgb),0.12)' : '', border: viewMode === 'split' ? '1px solid rgba(var(--primary-rgb),0.3)' : '' }} 
+                onClick={() => setViewMode('split')}
+              >
+                ◧ SPLIT SLIDER
+              </button>
             </span>
             <button className="btn-secondary" style={{ fontSize: '0.68rem', padding: '0.35rem 0.75rem' }} onClick={captureFrame}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d={ICO.camera}/></svg>
@@ -617,52 +630,93 @@ export default function VideoStudio({ settings, setSettings }) {
             />
           )}
 
-          {/* ── Side-by-Side Dual Viewport Grid ── */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', width: '100%', height: '100%', minHeight: '400px' }}>
-            {/* Left Viewport: RAW Input */}
-            <div style={{ background: '#090d16', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', position: 'relative', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '0.5rem 0.8rem', background: 'rgba(0,0,0,0.6)', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />
-                RAW LOW-RES SOURCE INPUT
+          {/* ── Viewport Stage ── */}
+          {viewMode === 'side-by-side' ? (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', width: '100%', height: '100%', minHeight: '400px' }}>
+              {/* Left Viewport: RAW Input */}
+              <div style={{ background: '#090d16', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ padding: '0.5rem 0.8rem', background: 'rgba(0,0,0,0.6)', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />
+                  RAW LOW-RES SOURCE INPUT
+                </div>
+                <div style={{ flex: 1, position: 'relative', minHeight: '340px' }}>
+                  <canvas ref={rawCanvasRef} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                </div>
               </div>
-              <div style={{ flex: 1, position: 'relative', minHeight: '340px' }}>
-                <canvas ref={rawCanvasRef} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+
+              {/* Right Viewport: Rendered / Upscaled / Enhanced Output */}
+              <div style={{ background: '#090d16', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(var(--primary-rgb),0.35)', position: 'relative', display: 'flex', flexDirection: 'column', boxShadow: '0 0 25px rgba(var(--primary-rgb),0.12)' }}>
+                <div style={{ padding: '0.5rem 0.8rem', background: 'rgba(var(--primary-rgb),0.15)', borderBottom: '1px solid rgba(var(--primary-rgb),0.3)', fontSize: '0.65rem', fontWeight: 800, color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <span style={{ color: '#fbbf24' }}>★</span>
+                    {exportedUrl ? `RENDERED & EXPORTED ${settings.targetHeight ? settings.targetHeight+'p' : settings.scale+'×'} 4K VIDEO` : `UTKARSH AI ${settings.targetHeight ? settings.targetHeight+'p' : settings.scale+'×'} 60-120 FPS ULTRA ENHANCED`}
+                  </div>
+                  {exportedUrl && (
+                    <a
+                      href={exportedUrl}
+                      download={`Utkarsh_AI_${settings.scale}x_${videoName.replace(/\.[^.]+$/, '')}.mp4`}
+                      style={{ color: 'var(--primary)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.6rem', fontWeight: 800 }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d={ICO.download}/></svg>
+                      DOWNLOAD .MP4
+                    </a>
+                  )}
+                </div>
+                <div style={{ flex: 1, position: 'relative', minHeight: '340px' }}>
+                  {exportedUrl ? (
+                    <video
+                      src={exportedUrl}
+                      controls
+                      loop={isLooping}
+                      autoPlay={isPlaying}
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    />
+                  ) : (
+                    <canvas ref={canvasRef} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  )}
+                </div>
               </div>
             </div>
-
-            {/* Right Viewport: Rendered / Upscaled / Enhanced Output */}
-            <div style={{ background: '#090d16', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(var(--primary-rgb),0.35)', position: 'relative', display: 'flex', flexDirection: 'column', boxShadow: '0 0 25px rgba(var(--primary-rgb),0.12)' }}>
-              <div style={{ padding: '0.5rem 0.8rem', background: 'rgba(var(--primary-rgb),0.15)', borderBottom: '1px solid rgba(var(--primary-rgb),0.3)', fontSize: '0.65rem', fontWeight: 800, color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <span style={{ color: '#fbbf24' }}>★</span>
-                  {exportedUrl ? `RENDERED & EXPORTED ${settings.targetHeight ? settings.targetHeight+'p' : settings.scale+'×'} 4K VIDEO` : `UTKARSH AI ${settings.targetHeight ? settings.targetHeight+'p' : settings.scale+'×'} 60-120 FPS ULTRA ENHANCED`}
-                </div>
-                {exportedUrl && (
-                  <a
-                    href={exportedUrl}
-                    download={`Utkarsh_AI_${settings.scale}x_${videoName.replace(/\.[^.]+$/, '')}.mp4`}
-                    style={{ color: 'var(--primary)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.6rem', fontWeight: 800 }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d={ICO.download}/></svg>
-                    DOWNLOAD .MP4
-                  </a>
-                )}
-              </div>
-              <div style={{ flex: 1, position: 'relative', minHeight: '340px' }}>
+          ) : (
+            <div 
+              style={{ position: 'relative', width: '100%', height: '100%', minHeight: '400px', background: '#090d16', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(var(--primary-rgb),0.35)' }}
+              onMouseMove={onContainerMouseMove}
+              onMouseUp={onContainerMouseUp}
+              onMouseLeave={onContainerMouseUp}
+            >
+              {/* Background: Upscaled */}
+              <div style={{ position: 'absolute', inset: 0 }}>
                 {exportedUrl ? (
-                  <video
-                    src={exportedUrl}
-                    controls
-                    loop={isLooping}
-                    autoPlay={isPlaying}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                  />
+                  <video src={exportedUrl} controls loop={isLooping} autoPlay={isPlaying} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 ) : (
                   <canvas ref={canvasRef} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 )}
+                <div style={{ position: 'absolute', top: '0.5rem', right: '0.8rem', background: 'rgba(var(--primary-rgb),0.6)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 800, color: '#fff', zIndex: 10 }}>
+                  AI UPSCALED
+                </div>
+              </div>
+
+              {/* Foreground: RAW (Clipped) */}
+              <div style={{ position: 'absolute', inset: 0, clipPath: `polygon(0 0, ${sliderPos}% 0, ${sliderPos}% 100%, 0 100%)`, pointerEvents: 'none' }}>
+                <canvas ref={rawCanvasRef} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                <div style={{ position: 'absolute', top: '0.5rem', left: '0.8rem', background: 'rgba(0,0,0,0.6)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', zIndex: 10 }}>
+                  RAW SOURCE
+                </div>
+              </div>
+
+              {/* Slider Line & Handle */}
+              <div 
+                style={{ position: 'absolute', top: 0, bottom: 0, left: `${sliderPos}%`, width: '3px', background: 'var(--primary)', cursor: 'ew-resize', transform: 'translateX(-50%)', zIndex: 20 }}
+                onMouseDown={onSliderMouseDown}
+              >
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '32px', height: '32px', background: '#090d16', border: '3px solid var(--primary)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 15px rgba(0,0,0,0.8)' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M15 18l6-6-6-6M9 18l-6-6 6-6"/>
+                  </svg>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Timeline & Playback Bar */}

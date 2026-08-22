@@ -58,6 +58,25 @@ export class WebGLVideoEngine {
 
     const gl = this.gl;
 
+    // WebGL Context Loss Handling
+    this.isContextLost = false;
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      console.warn('[Utkarsh AI] WebGL Context Lost! GPU recovery initiated...');
+      this.isContextLost = true;
+    }, false);
+
+    canvas.addEventListener('webglcontextrestored', () => {
+      console.log('[Utkarsh AI] WebGL Context Restored! Rebuilding GPU pipeline...');
+      this.isContextLost = false;
+      this._initPrograms();
+      this._initVAO();
+      this._initTextures();
+      this._initFBO();
+      this._lastDstW = 0; // Force resize next frame
+      this._lastSrcW = 0;
+    }, false);
+
     // Check for float texture support
     this.hasFloatFBO = this.isWebGL2
       ? !!gl.getExtension('EXT_color_buffer_float')
@@ -694,8 +713,9 @@ export class WebGLVideoEngine {
   // ─────────────────────────────────────────────────────────────────
 
   render(videoSource, settings = {}) {
+    if (this.isContextLost || !videoSource) return;
+
     const gl = this.gl;
-    if (!videoSource) return;
 
     const srcW = videoSource.videoWidth  || videoSource.width  || 480;
     const srcH = videoSource.videoHeight || videoSource.height || 270;

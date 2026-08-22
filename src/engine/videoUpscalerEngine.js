@@ -211,3 +211,4 @@ export function generateSampleVideoCanvas() {
     stream: canvas.captureStream(30),
   };
 }
+

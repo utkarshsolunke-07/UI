@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-08-22T18:55:53.203Z",
+  "timestamp": "2026-08-22T19:57:30.772Z",
   "total": 99,
   "passed": 99,
   "failed": 0,
@@ -363,7 +363,7 @@
       "status": "PASS"
     },
     {
-      "name": "Export falls back to recordUpscaledVideoStream on error",
+      "name": "Export completely removes recordUpscaledVideoStream fallback",
       "status": "PASS"
     },
     {
