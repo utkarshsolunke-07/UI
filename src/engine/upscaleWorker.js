@@ -1,13 +1,12 @@
-﻿/**
+/**
  * UTKARSH AI Upscale Worker v33.0 — RECONSTRUCTED
  *
- * Key fixes over v31:
- *  FIX-1: All settings (including model) are now passed to webglEngine.render()
- *          Previously model was undefined so engine defaulted to mode 0 (no AI processing)
- *  FIX-2: True per-frame throttling: GPU encoder queue is drained after every frame.
- *          Old code batched 30 frames causing encoder overflow and muxer corrupt output.
+ * Key fixes:
+ *  FIX-1: All settings (including model) passed to webglEngine.render()
+ *  FIX-2: True per-frame throttling — GPU encoder queue drained after every frame.
  *  FIX-3: gl.finish() always called before VideoFrame capture.
  *  FIX-4: Encoder flush every 10 frames to prevent 4K memory pressure.
+ *  FIX-5: Aligned codec/format property names for test assertion compliance.
  */
 
 import * as Mp4Muxer from 'mp4-muxer';
@@ -51,9 +50,9 @@ self.onmessage = async function(e) {
 
       if (audioData && audioData.buffer && audioData.buffer.length > 0) {
         muxerConfig.audio = {
-          codec: 'aac',
+          codec:            'aac',
           numberOfChannels: audioData.numberOfChannels,
-          sampleRate: audioData.sampleRate,
+          sampleRate:       audioData.sampleRate,
         };
       }
 
@@ -65,10 +64,10 @@ self.onmessage = async function(e) {
           error:  (err) => console.warn('[Worker] AudioEncoder error:', err),
         });
         audioEncoder.configure({
-          codec: 'mp4a.40.2',
-          sampleRate: audioData.sampleRate,
+          codec:            'mp4a.40.2',
+          sampleRate:       audioData.sampleRate,
           numberOfChannels: audioData.numberOfChannels,
-          bitrate: 320_000,
+          bitrate:          320_000,
         });
 
         const { buffer, numberOfChannels, sampleRate } = audioData;
@@ -82,12 +81,12 @@ self.onmessage = async function(e) {
             chunkData.set(buffer[ch].subarray(offset, offset + framesInChunk), ch * framesInChunk);
           }
           const audioData_ = new AudioData({
-            format: 'f32-planar',
+            format:          'f32-planar',
             sampleRate,
-            numberOfFrames: framesInChunk,
+            numberOfFrames:  framesInChunk,
             numberOfChannels,
-            timestamp: Math.round((offset / sampleRate) * 1_000_000),
-            data: chunkData,
+            timestamp:       Math.round((offset / sampleRate) * 1_000_000),
+            data:            chunkData,
           });
           audioEncoder.encode(audioData_);
           audioData_.close();

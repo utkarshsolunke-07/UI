@@ -1,15 +1,15 @@
 /**
- * UTKARSH AI Offline Export Engine v31.0
- * 
+ * UTKARSH AI Offline Export Engine v33.0
+ *
  * Frame-by-frame offline video export using Web Workers + WebCodecs.
  * Properly seeks each frame, waits for decode, then captures to worker.
- * 
- * Key fixes over v30:
- *  - Event listener added BEFORE setting currentTime (fixes race condition)
- *  - createImageBitmap called inside requestAnimationFrame to ensure decode is complete
+ *
+ * Key improvements:
+ *  - seeked event listener added BEFORE setting currentTime (race-condition fix)
+ *  - 1.5s timeout on seek prevents infinite hang
+ *  - 4K (3840) target reference for scale=4 exports
  *  - 80 Mbps bitrate for 4K export
- *  - VP9 High Tier + H.264 High Profile codec probe order
- *  - Codec probe respects actual max dimensions supported by hardware
+ *  - H.264 High Profile + VP9 codec probe order
  */
 
 export async function exportOfflineVideo(
@@ -25,7 +25,7 @@ export async function exportOfflineVideo(
 
     try {
       const rawDur  = videoElementSource.duration;
-      const duration = (rawDur && !isNaN(rawDur) && isFinite(rawDur)) ? rawDur : 10;
+      const duration = (rawDur && !isNaN(rawDur) && isFinite(rawDur)) ? rawDur : (rawDur || 10);
 
       // FPS: respect user setting. 'original' defaults to 30fps for reliability.
       let fps = 30;
@@ -61,11 +61,15 @@ export async function exportOfflineVideo(
         dstH = Math.round(srcH * scale);
       }
 
+      // 4K target = 3840 x 2160 (used when scale=4 and no explicit target set)
+      const SCALE4K_W = 3840;
       // Force even (required by most codecs)
       dstW = dstW % 2 === 0 ? dstW : dstW + 1;
       dstH = dstH % 2 === 0 ? dstH : dstH + 1;
+      // Cap at 4K max (SCALE4K_W) if scale is 4 and no explicit target
+      if (scale >= 4 && !settings.targetWidth && !settings.targetHeight && dstW > SCALE4K_W) { dstW = SCALE4K_W; dstH = Math.round(SCALE4K_W / aspect); }
 
-      // ── Codec probe — test from best to baseline ──
+      // Codec probe — test from best to baseline
       const BITRATE = 80_000_000; // 80 Mbps for 4K
       const candidateCodecs = [
         'avc1.640034', // H.264 High Profile 5.2 — up to 4K@60fps
@@ -95,11 +99,11 @@ export async function exportOfflineVideo(
       onProgress(3, `Codec: ${codec} | Output: ${dstW}x${dstH} @ ${fps}fps | Source: ${srcW}x${srcH}`);
       console.log(`[Export] Resolution confirmed: ${srcW}x${srcH} -> ${dstW}x${dstH} @ ${fps}fps (scale: ${(dstH/srcH).toFixed(1)}x)`);
 
-      // ── Audio extraction ──
+      // Audio extraction
       let audioPayload = null;
       if (videoElementSource.src) {
         try {
-          onProgress(5, 'Extracting audio track…');
+          onProgress(5, 'Extracting audio track...');
           const resp = await fetch(videoElementSource.src);
           const buf  = await resp.arrayBuffer();
           const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -120,7 +124,7 @@ export async function exportOfflineVideo(
         }
       }
 
-      // ── Initialize Worker ──
+      // Initialize Worker
       worker = new Worker(new URL('./upscaleWorker.js', import.meta.url), { type: 'module' });
 
       let resolveWorker = null;
@@ -155,9 +159,9 @@ export async function exportOfflineVideo(
       });
       await initP;
 
-      onProgress(8, 'Worker initialized. Starting frame extraction…');
+      onProgress(8, 'Worker initialized. Starting frame extraction...');
 
-      // ── Pause source video for seeking ──
+      // Pause source video for seeking
       const isVideo = videoElementSource instanceof HTMLVideoElement;
       if (isVideo) {
         videoElementSource.pause();
@@ -170,17 +174,17 @@ export async function exportOfflineVideo(
         }
       }
 
-      // ── Frame-by-frame extraction with per-frame progress ──
+      // Frame-by-frame extraction with per-frame progress
       for (let i = 0; i < totalFrames; i++) {
         const targetTime = i / fps;
 
-        // Seek to exact frame timestamp
+        // Seek to frame timestamp (event listener must precede currentTime assignment)
         if (isVideo) {
           if (Math.abs(videoElementSource.currentTime - targetTime) > 0.001) {
             await new Promise((res) => {
               let done = false;
               const finish = () => { if (done) return; done = true; res(); };
-              const timeout = setTimeout(finish, 800); // 800ms max seek wait
+              const timeout = setTimeout(finish, 1500); // 1.5s max seek wait
               videoElementSource.addEventListener('seeked', function handler() {
                 videoElementSource.removeEventListener('seeked', handler);
                 clearTimeout(timeout);
@@ -198,8 +202,12 @@ export async function exportOfflineVideo(
         try {
           bitmap = await createImageBitmap(videoElementSource);
         } catch (err) {
-          console.warn(`[Export] Frame ${i} capture failed:`, err);
-          continue;
+          try {
+            bitmap = await createImageBitmap(videoElementSource, { resizeQuality: 'high' });
+          } catch (_) {
+            console.warn(`[Export] Frame ${i} capture failed:`, err);
+            continue;
+          }
         }
 
         // Send frame to worker for AI upscaling
@@ -216,7 +224,7 @@ export async function exportOfflineVideo(
         onProgress(pct, `AI Upscaling Frame ${i + 1} / ${totalFrames} — ${dstW}x${dstH} (${pct}%)`);
       }
 
-      onProgress(97, 'Finalizing MP4 — encoding remaining frames…');
+      onProgress(97, 'Finalizing MP4 — encoding remaining frames...');
 
       const finalizeP = awaitWorker();
       worker.postMessage({ type: 'FINALIZE' });
