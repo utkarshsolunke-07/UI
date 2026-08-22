@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import ImageDropzone from './ImageDropzone';
 import ControlsPanel from './ControlsPanel';
 import VisualStudio  from './VisualStudio';
