@@ -437,10 +437,17 @@ export async function upscaleImage(imgElement, settings, onProgress) {
 
   if (!srcW || !srcH) throw new Error('Cannot read image dimensions. Ensure image is fully loaded.');
 
+  const aspect = srcW / srcH;
   let dstW, dstH;
   if (settings.targetWidth && settings.targetHeight) {
     dstW = settings.targetWidth;
     dstH = settings.targetHeight;
+  } else if (settings.targetHeight) {
+    dstH = settings.targetHeight;
+    dstW = Math.round(dstH * aspect);
+  } else if (settings.targetWidth) {
+    dstW = settings.targetWidth;
+    dstH = Math.round(dstW / aspect);
   } else {
     const scale = settings.scale || 2;
     dstW = Math.round(srcW * scale);

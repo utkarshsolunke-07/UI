@@ -213,19 +213,22 @@ export default function ControlsPanel({
           </div>
 
           <div className="divider" />
-          <div className="section-title">OR SCALE MULTIPLIER</div>
-          <div className="pill-row">
-            {[1.5, 2, 4, 8].map(s => (
-              <button
-                key={s}
-                className={`res-pill ${!settings.targetWidth && settings.scale === s ? 'active' : ''}`}
-                onClick={() => setSettings(p => ({ ...p, scale: s, targetWidth: null, targetHeight: null }))}
-              >
-                {s}× Scale
-              </button>
-            ))}
-          </div>
-
+            <div>
+              <div className="section-title">TARGET SCALE & RESOLUTION</div>
+              <div className="pill-row">
+                {[{l:'1080p FHD', h:1080},{l:'2K 1440p', h:1440},{l:'4K UHD', h:2160},{l:'8K Ultra', h:4320}].map(({l,h}) => (
+                  <button
+                    key={h}
+                    className={`res-pill ${settings.targetHeight === h ? 'active' : ''}`}
+                    onClick={() => {
+                      setSettings(p => ({ ...p, targetHeight: h, targetWidth: null, scale: null }));
+                    }}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
           <div className="divider" />
           <div className="section-title">OUTPUT FORMAT</div>
           <div className="pill-row">

@@ -96,7 +96,7 @@ export default function App() {
     if (!url) return;
     const a = Object.assign(document.createElement('a'), {
       href: url,
-      download: `Utkarsh_AI_${settings.scale}x_${base}.${settings.format}`,
+      download: `Utkarsh_AI_${settings.targetHeight ? settings.targetHeight+'p' : settings.scale+'x'}_${base}.${settings.format}`,
     });
     a.click();
   };
@@ -167,7 +167,7 @@ export default function App() {
               <div className="modal-stats">
                 {[
                   { l: 'ENGINE', v: 'UTKARSH MASTER' },
-                  { l: 'SCALE', v: `${settings.scale}×` },
+                  { l: 'SCALE', v: `${settings.targetHeight ? settings.targetHeight+'p' : settings.scale+'×'}` },
                   { l: 'STAGE', v: `${progress}%` },
                 ].map(({ l, v }) => (
                   <div className="mstat" key={l}>

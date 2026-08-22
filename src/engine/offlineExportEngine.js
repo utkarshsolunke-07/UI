@@ -41,6 +41,12 @@ export async function exportOfflineVideo(
       if (settings.targetWidth && settings.targetHeight) {
         dstW = settings.targetWidth;
         dstH = settings.targetHeight;
+      } else if (settings.targetHeight) {
+        dstH = settings.targetHeight;
+        dstW = Math.round(dstH * aspect);
+      } else if (settings.targetWidth) {
+        dstW = settings.targetWidth;
+        dstH = Math.round(dstW / aspect);
       } else {
         dstW = Math.round(srcW * scale);
         dstH = Math.round(srcH * scale);

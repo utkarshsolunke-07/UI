@@ -442,13 +442,13 @@ export default function VideoStudio({ settings, setSettings }) {
             <div>
               <div className="section-title">TARGET SCALE & RESOLUTION</div>
               <div className="pill-row">
-                {[{l:'1080p FHD', s:1.5},{l:'2K 1440p', s:2},{l:'4K UHD', s:4},{l:'8K Ultra', s:8}].map(({l,s}) => (
+                {[{l:'1080p FHD', h:1080},{l:'2K 1440p', h:1440},{l:'4K UHD', h:2160},{l:'8K Ultra', h:4320}].map(({l,h}) => (
                   <button
-                    key={s}
-                    className={`res-pill ${settings.scale === s && !settings.targetWidth ? 'active' : ''}`}
-                    onClick={() => setSettings(p => ({ ...p, scale: s, targetWidth: null, targetHeight: null }))}
+                    key={h}
+                    className={`res-pill ${settings.targetHeight === h ? 'active' : ''}`}
+                    onClick={() => setSettings(p => ({ ...p, targetHeight: h, targetWidth: null, scale: null }))}
                   >
-                    {l} ({s}×)
+                    {l}
                   </button>
                 ))}
               </div>
@@ -520,7 +520,7 @@ export default function VideoStudio({ settings, setSettings }) {
                 AI UPSCALE MECHANISM & SERVICES
               </div>
               <div style={{ fontSize: '0.72rem', color: 'var(--text)', fontWeight: 800, marginBottom: '0.6rem' }}>
-                {settings.scale === 4 ? '4K UHD (3840×2160p)' : settings.scale === 8 ? '8K Ultra (7680×4320p)' : settings.scale === 2 ? '2K (2560×1440p)' : '1080p FHD'} • {settings.fps === 'original' ? 'Source FPS (60FPS)' : `${settings.fps} FPS`}
+                {settings.targetHeight === 2160 ? '4K UHD (2160p)' : settings.targetHeight === 4320 ? '8K Ultra (4320p)' : settings.targetHeight === 1440 ? '2K (1440p)' : settings.targetHeight === 1080 ? '1080p FHD' : settings.scale ? `${settings.scale}x Scale` : 'Custom'} • {settings.fps === 'original' ? 'Source FPS (60FPS)' : `${settings.fps} FPS`}
               </div>
 
               {/* Service Badges — Cons → Pros Upgraded v32.0 */}
@@ -562,7 +562,7 @@ export default function VideoStudio({ settings, setSettings }) {
               ) : (
                 <button className="btn-primary" onClick={handleExport} disabled={isExporting} style={{ padding: '0.75rem 1rem' }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d={ICO.flame}/></svg>
-                  {isExporting ? `AI UPSCALE RUNNING… ${exportProgress}%` : `START AI UPSCALE PROCESS (${settings.scale}×)`}
+                  {isExporting ? `AI UPSCALE RUNNING… ${exportProgress}%` : `START AI UPSCALE PROCESS (${settings.targetHeight ? settings.targetHeight+'p' : settings.scale+'×'})`}
                 </button>
               )}
               
@@ -611,7 +611,7 @@ export default function VideoStudio({ settings, setSettings }) {
             <span className="badge-webgpu">⚡ WEBGPU 60 FPS HIGH-DEFINITION STAGE</span>
             <span className="vt-filename">{videoName}</span>
             <span className="vt-label" style={{ color: 'var(--primary)', fontWeight: 800 }}>
-              → {settings.scale}× AI SUPER-RESOLUTION ({settings.fps === 'original' ? '60 FPS' : `${settings.fps} FPS`})
+              → {settings.targetHeight ? settings.targetHeight+'p' : settings.scale+'×'} AI SUPER-RESOLUTION ({settings.fps === 'original' ? '60 FPS' : `${settings.fps} FPS`})
             </span>
           </div>
           <div className="viewport-toolbar-right">
@@ -662,7 +662,7 @@ export default function VideoStudio({ settings, setSettings }) {
               <div style={{ padding: '0.5rem 0.8rem', background: 'rgba(var(--primary-rgb),0.15)', borderBottom: '1px solid rgba(var(--primary-rgb),0.3)', fontSize: '0.65rem', fontWeight: 800, color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <span style={{ color: '#fbbf24' }}>★</span>
-                  {exportedUrl ? `RENDERED & EXPORTED ${settings.scale}× 4K VIDEO` : `UTKARSH AI ${settings.scale}× 60-120 FPS ULTRA ENHANCED`}
+                  {exportedUrl ? `RENDERED & EXPORTED ${settings.targetHeight ? settings.targetHeight+'p' : settings.scale+'×'} 4K VIDEO` : `UTKARSH AI ${settings.targetHeight ? settings.targetHeight+'p' : settings.scale+'×'} 60-120 FPS ULTRA ENHANCED`}
                 </div>
                 {exportedUrl && (
                   <a
