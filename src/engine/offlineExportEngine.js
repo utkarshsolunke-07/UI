@@ -231,9 +231,9 @@ export async function exportOfflineVideo(
         // Minimum per-frame delay to prevent main thread blocking
         await new Promise(r => setTimeout(r, 4));
 
-        // Report progress on EVERY frame for accurate UI feedback
+        // Report progress on EVERY frame with explicit 4-step AI Pipeline status
         const pct = Math.round(8 + (i / totalFrames) * 88);
-        onProgress(pct, `AI Upscaling Frame ${i + 1} / ${totalFrames} — ${dstW}x${dstH} (${pct}%)`);
+        onProgress(pct, `Neural AI Frame ${i + 1} / ${totalFrames} (Feature Map → Denoise → Sub-Pixel → Temporal Polish) — ${dstW}x${dstH} (${pct}%)`);
       }
 
       onProgress(97, 'Finalizing MP4 — encoding remaining frames...');
