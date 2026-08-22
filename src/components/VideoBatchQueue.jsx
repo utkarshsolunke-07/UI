@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Film, UploadCloud, Play, Download, Trash2, CheckCircle2, RefreshCw, Sparkles, Layers, Zap } from 'lucide-react';
-import { recordUpscaledVideoStream } from '../engine/videoUpscalerEngine';
+import { exportOfflineVideo } from '../engine/offlineExportEngine';
 
 export default function VideoBatchQueue({ globalSettings }) {
   const [videoQueue, setVideoQueue] = useState([]);
@@ -29,10 +29,21 @@ export default function VideoBatchQueue({ globalSettings }) {
   };
 
   const handleRemoveItem = (id) => {
-    setVideoQueue((prev) => prev.filter((item) => item.id !== id));
+    setVideoQueue((prev) => {
+      const item = prev.find(i => i.id === id);
+      if (item) {
+        if (item.srcUrl) URL.revokeObjectURL(item.srcUrl);
+        if (item.exportedUrl) URL.revokeObjectURL(item.exportedUrl);
+      }
+      return prev.filter((item) => item.id !== id);
+    });
   };
 
   const handleClearAll = () => {
+    videoQueue.forEach(item => {
+      if (item.srcUrl) URL.revokeObjectURL(item.srcUrl);
+      if (item.exportedUrl) URL.revokeObjectURL(item.exportedUrl);
+    });
     setVideoQueue([]);
   };
 
@@ -51,7 +62,6 @@ export default function VideoBatchQueue({ globalSettings }) {
       );
 
       try {
-        // Create offscreen video element for batch frame extraction
         const video = document.createElement('video');
         video.src = item.srcUrl;
         video.muted = true;
@@ -63,24 +73,18 @@ export default function VideoBatchQueue({ globalSettings }) {
         const canvas = document.createElement('canvas');
         canvas.width = (video.videoWidth || 480) * scale;
         canvas.height = (video.videoHeight || 270) * scale;
-        const ctx = canvas.getContext('2d');
 
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        // Record 5s batch clip
-        const durationMs = Math.min((video.duration || 5) * 1000, 5000);
-
-        video.play();
-
-        const { videoUrl } = await recordUpscaledVideoStream(
+        const { videoUrl } = await exportOfflineVideo(
+          video,
           canvas,
-          durationMs,
+          null,
+          globalSettings,
           (prog, msg) => {
             setVideoQueue((prev) =>
               prev.map((it) => (it.id === item.id ? { ...it, progress: prog, statusMsg: msg } : it))
             );
           },
-          (blob, url) => {}
+          () => {}
         );
 
         setVideoQueue((prev) =>
@@ -93,7 +97,7 @@ export default function VideoBatchQueue({ globalSettings }) {
       } catch (err) {
         setVideoQueue((prev) =>
           prev.map((it) =>
-            it.id === item.id ? { ...it, status: 'failed', statusMsg: `Failed: ${err.message}` } : it
+            it.id === item.id ? { ...it, status: `failed`, statusMsg: `Failed: ${err.message}` } : it
           )
         );
       }

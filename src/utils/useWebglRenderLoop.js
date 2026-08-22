@@ -77,7 +77,9 @@ export function useWebglRenderLoop({
           sharpness: settings.sharpness ?? 70,
           clarity: settings.clarity ?? 65,
           hdr: settings.hdr ?? 30,
-          temp: tempVal
+          temp: tempVal,
+          grain: settings.grain ?? 2,
+          lut: settings.lut || 'none'
         });
       }
 
