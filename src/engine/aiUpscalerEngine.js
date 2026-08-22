@@ -10,7 +10,7 @@
  */
 
 import { WebGLVideoEngine } from './webglVideoEngine.js';
-import { callHuggingFaceOpenUpscale } from './multiAiVideoEngine.js';
+import { callHuggingFaceUpscaler } from './multiAiVideoEngine.js';
 import { globalONNXEngine } from './onnxNeuralEngine.js';
 import { analyzeFrameWithGemini } from './geminiAiEngine.js';
 
@@ -502,7 +502,7 @@ export async function upscaleImage(imgElement, settings, onProgress) {
     onProgress(35, 'Connecting to HuggingFace Free Cloud Inference API…');
     try {
       const srcDataUrl = srcCanvas.toDataURL('image/png');
-      const hfResultUrl = await callHuggingFaceOpenUpscale(srcDataUrl);
+      const hfResultUrl = await callHuggingFaceUpscaler(srcDataUrl);
       if (hfResultUrl) {
         const cloudImg = new Image();
         cloudImg.src = hfResultUrl;
