@@ -196,7 +196,6 @@ export default function VideoStudio({ settings, setSettings }) {
           (blob, url) => { 
             setExportedUrl(url); 
             setIsExporting(false); 
-            setIsPreviewOpen(true); // Auto-open video player
           }
         );
       } catch (err) {
@@ -209,7 +208,6 @@ export default function VideoStudio({ settings, setSettings }) {
           (blob, url) => { 
             setExportedUrl(url); 
             setIsExporting(false); 
-            setIsPreviewOpen(true); // Auto-open video player
           }
         );
       }
@@ -384,10 +382,19 @@ export default function VideoStudio({ settings, setSettings }) {
               </div>
 
               {exportedUrl ? (
-                <div style={{ display: 'flex', gap: '0.4rem', flexDirection: 'column' }}>
-                  <button className="btn-primary" onClick={() => setIsPreviewOpen(true)}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d={ICO.play}/></svg>
-                    OPEN RENDERED VIDEO PLAYER
+                <div style={{ display: 'flex', gap: '0.5rem', flexDirection: 'column' }}>
+                  <a
+                    href={exportedUrl}
+                    download={`Utkarsh_AI_${settings.scale}x_${videoName.replace(/\.[^.]+$/, '')}.mp4`}
+                    className="btn-primary"
+                    style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem 1rem' }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d={ICO.download}/></svg>
+                    DOWNLOAD RENDERED VIDEO (.MP4)
+                  </a>
+                  <button className="btn-ghost" onClick={handleExport} disabled={isExporting} style={{ fontSize: '0.68rem' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d={ICO.flame}/></svg>
+                    Re-render Video
                   </button>
                 </div>
               ) : (
@@ -496,14 +503,36 @@ export default function VideoStudio({ settings, setSettings }) {
               </div>
             </div>
 
-            {/* Right Viewport: AI 4K Output */}
+            {/* Right Viewport: Rendered / Upscaled / Enhanced Output */}
             <div style={{ background: '#090d16', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(var(--primary-rgb),0.35)', position: 'relative', display: 'flex', flexDirection: 'column', boxShadow: '0 0 25px rgba(var(--primary-rgb),0.12)' }}>
-              <div style={{ padding: '0.5rem 0.8rem', background: 'rgba(var(--primary-rgb),0.15)', borderBottom: '1px solid rgba(var(--primary-rgb),0.3)', fontSize: '0.65rem', fontWeight: 800, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span style={{ color: '#fbbf24' }}>★</span>
-                UTKARSH AI {settings.scale}× 60-120 FPS ULTRA ENHANCED
+              <div style={{ padding: '0.5rem 0.8rem', background: 'rgba(var(--primary-rgb),0.15)', borderBottom: '1px solid rgba(var(--primary-rgb),0.3)', fontSize: '0.65rem', fontWeight: 800, color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{ color: '#fbbf24' }}>★</span>
+                  {exportedUrl ? `RENDERED & EXPORTED ${settings.scale}× 4K VIDEO` : `UTKARSH AI ${settings.scale}× 60-120 FPS ULTRA ENHANCED`}
+                </div>
+                {exportedUrl && (
+                  <a
+                    href={exportedUrl}
+                    download={`Utkarsh_AI_${settings.scale}x_${videoName.replace(/\.[^.]+$/, '')}.mp4`}
+                    style={{ color: 'var(--primary)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.6rem', fontWeight: 800 }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d={ICO.download}/></svg>
+                    DOWNLOAD .MP4
+                  </a>
+                )}
               </div>
               <div style={{ flex: 1, position: 'relative', minHeight: '340px' }}>
-                <canvas ref={canvasRef} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                {exportedUrl ? (
+                  <video
+                    src={exportedUrl}
+                    controls
+                    loop={isLooping}
+                    autoPlay={isPlaying}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  />
+                ) : (
+                  <canvas ref={canvasRef} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                )}
               </div>
             </div>
           </div>
@@ -539,16 +568,6 @@ export default function VideoStudio({ settings, setSettings }) {
           </div>
         </div>
       </div>
-
-      {isPreviewOpen && exportedUrl && (
-        <PostRenderPlayer 
-          url={exportedUrl} 
-          fps={settings.fps === 'original' ? 'Source FPS (approx 60)' : settings.fps} 
-          resolutionLabel={settings.scale === 4 ? '4K UHD (3840×2160)' : settings.scale === 8 ? '8K Ultra (7680×4320)' : settings.scale === 2 ? '2K (2560×1440)' : '1080p FHD'}
-          videoName={`Utkarsh_AI_${settings.scale}x_${videoName}`}
-          onClose={() => setIsPreviewOpen(false)}
-        />
-      )}
     </div>
   );
 }
