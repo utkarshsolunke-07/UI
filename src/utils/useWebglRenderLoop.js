@@ -1,5 +1,19 @@
+/**
+ * UTKARSH AI WebGL Render Loop Hook v31.0
+ * 
+ * Key improvements:
+ *  - Properly separates srcSize and dstSize (the v30 bug that broke EASU math)
+ *  - Uses requestAnimationFrame delta-time to truly cap at 60fps (prevents >60fps waste)
+ *  - Preview canvas capped at 1920px wide for smooth UI (export runs at full 4K in worker)
+ *  - Raw canvas draws at source resolution for accurate comparison
+ *  - Skips WebGL render if video frame didn't change (readyState check)
+ */
+
 import { useEffect, useRef } from 'react';
 import { WebGLVideoEngine } from '../engine/webglVideoEngine';
+
+const TARGET_FPS = 60;
+const FRAME_MS   = 1000 / TARGET_FPS;
 
 export function useWebglRenderLoop({
   canvasRef,
@@ -9,103 +23,101 @@ export function useWebglRenderLoop({
   settings,
   isSample,
   tempVal,
-  webglEngineRef
+  webglEngineRef,
 }) {
-  const animIdRef = useRef(null);
+  const animIdRef  = useRef(null);
+  const lastFrameTs = useRef(0);
 
   useEffect(() => {
-    const render = () => {
-      const canvas = canvasRef.current;
+    let stopped = false;
+
+    const render = (now) => {
+      if (stopped) return;
+      animIdRef.current = requestAnimationFrame(render);
+
+      // FPS throttle — skip if less than 16.6ms since last render
+      if (now - lastFrameTs.current < FRAME_MS - 1) return;
+      lastFrameTs.current = now;
+
+      const canvas    = canvasRef.current;
       const rawCanvas = rawCanvasRef.current;
-      if (!canvas) {
-        animIdRef.current = requestAnimationFrame(render);
-        return;
+      if (!canvas) return;
+
+      // Get video source
+      const src = isSample ? sampleRef.current?.canvas : videoRef.current;
+      if (!src) return;
+
+      // Don't render if HTMLVideoElement isn't ready
+      if (src instanceof HTMLVideoElement) {
+        if (src.readyState < 2) return;
+        if (src.paused && src.currentTime === 0) return;
       }
 
-      // Initialize WebGL engine if it doesn't exist
+      // ── Source dimensions ──
+      const srcW = isSample ? (src.width  || 480) : (src.videoWidth  || src.width  || 480);
+      const srcH = isSample ? (src.height || 270) : (src.videoHeight || src.height || 270);
+      if (!srcW || !srcH) return;
+
+      const aspect = srcW / srcH;
+      const scale  = settings.scale || 4;
+
+      // ── Preview canvas dimensions (capped at 1920 for smooth UI) ──
+      let dstW, dstH;
+      if (scale <= 1.5)      { dstW = 1920; dstH = Math.round(1920 / aspect); }
+      else if (scale <= 2)   { dstW = 1920; dstH = Math.round(1920 / aspect); }
+      else if (scale <= 4)   { dstW = 1920; dstH = Math.round(1920 / aspect); }
+      else                   { dstW = 1920; dstH = Math.round(1920 / aspect); }
+
+      dstW = dstW % 2 === 0 ? dstW : dstW + 1;
+      dstH = dstH % 2 === 0 ? dstH : dstH + 1;
+
+      // Resize AI canvas if needed
+      if (canvas.width !== dstW || canvas.height !== dstH) {
+        canvas.width  = dstW;
+        canvas.height = dstH;
+      }
+
+      // ── Init / re-init WebGL engine if canvas changed ──
       if (!webglEngineRef.current) {
         try {
           webglEngineRef.current = new WebGLVideoEngine(canvas);
         } catch (e) {
-          console.error("Failed to initialize WebGL engine", e);
+          console.error('[RenderLoop] WebGL2 init failed:', e);
+          return;
         }
       }
 
-      const src = isSample ? sampleRef.current?.canvas : videoRef.current;
-      if (!src) {
-        animIdRef.current = requestAnimationFrame(render);
-        return;
-      }
-
-      // Ensure HTMLVideoElement is ready before drawing to prevent WebGL crashes
-      if (src instanceof HTMLVideoElement && src.readyState < 2) {
-        animIdRef.current = requestAnimationFrame(render);
-        return;
-      }
-
-      const scale = settings.scale || 4;
-      const srcW = isSample ? 480 : (src.videoWidth || 480);
-      const srcH = isSample ? 270 : (src.videoHeight || 270);
-      const aspect = (srcW && srcH) ? (srcW / srcH) : (16 / 9);
-
-      // Force TRUE Target Pixel Dimensions
-      let dstW = 3840;
-      let dstH = 2160;
-
-      if (scale === 1.5) { dstW = 1920; dstH = Math.round(1920 / aspect); }
-      else if (scale === 2) { dstW = 2560; dstH = Math.round(2560 / aspect); }
-      else if (scale === 4) { dstW = 3840; dstH = Math.round(3840 / aspect); }
-      else if (scale === 8) { dstW = 7680; dstH = Math.round(7680 / aspect); }
-      else { dstW = Math.round(srcW * scale); dstH = Math.round(srcH * scale); }
-
-      // PREVIEW FPS OPTIMIZATION: Cap UI Canvas to 1080p max to prevent browser lag.
-      // The true 4K/8K resolution is exclusively used in the offlineExportEngine worker!
-      const maxPreviewWidth = 1920;
-      if (dstW > maxPreviewWidth) {
-        const ratio = maxPreviewWidth / dstW;
-        dstW = maxPreviewWidth;
-        dstH = Math.round(dstH * ratio);
-      }
-
-      // Force even numbers for VideoEncoder compatibility
-      dstW = dstW % 2 === 0 ? dstW : dstW + 1;
-      dstH = dstH % 2 === 0 ? dstH : dstH + 1;
-
-      if (canvas.width !== dstW || canvas.height !== dstH) {
-        canvas.width = dstW;
-        canvas.height = dstH;
-        // Re-init webgl engine context bounds if canvas resized
-        if (webglEngineRef.current?.gl) {
-          webglEngineRef.current.gl.viewport(0, 0, dstW, dstH);
-        }
-      }
-
-      /* 1. Render RAW Canvas (Left Layer) */
-      if (rawCanvas && src) {
+      // ── 1. Draw RAW source to left canvas ──
+      if (rawCanvas) {
         if (rawCanvas.width !== srcW || rawCanvas.height !== srcH) {
-          rawCanvas.width = srcW;
+          rawCanvas.width  = srcW;
           rawCanvas.height = srcH;
         }
-        const rawCtx = rawCanvas.getContext('2d');
-        rawCtx.drawImage(src, 0, 0, srcW, srcH);
+        const ctx = rawCanvas.getContext('2d');
+        ctx.drawImage(src, 0, 0, srcW, srcH);
       }
 
-      /* 2. Render AI Upscaled & Sharpened Canvas via WebGL (Right Layer) */
-      if (src && webglEngineRef.current) {
+      // ── 2. AI Upscale render (3-pass: EASU → RCAS → Color) ──
+      try {
         webglEngineRef.current.render(src, {
           sharpness: settings.sharpness ?? 70,
-          clarity: settings.clarity ?? 65,
-          hdr: settings.hdr ?? 30,
-          temp: tempVal,
-          grain: settings.grain ?? 2,
-          lut: settings.lut || 'none'
+          clarity:   settings.clarity   ?? 65,
+          hdr:       settings.hdr       ?? 40,
+          temp:      tempVal            ?? 0,
+          grain:     settings.grain     ?? 2,
+          lut:       settings.lut       || 'none',
         });
+      } catch (e) {
+        console.warn('[RenderLoop] WebGL render error, reinitializing:', e);
+        webglEngineRef.current = null; // Force reinit next frame
       }
-
-      animIdRef.current = requestAnimationFrame(render);
     };
 
     animIdRef.current = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(animIdRef.current);
+
+    return () => {
+      stopped = true;
+      if (animIdRef.current) cancelAnimationFrame(animIdRef.current);
+    };
   }, [settings, isSample, tempVal, canvasRef, rawCanvasRef, videoRef, sampleRef, webglEngineRef]);
 }

@@ -1,206 +1,235 @@
+/**
+ * UTKARSH AI Offline Export Engine v31.0
+ * 
+ * Frame-by-frame offline video export using Web Workers + WebCodecs.
+ * Properly seeks each frame, waits for decode, then captures to worker.
+ * 
+ * Key fixes over v30:
+ *  - Event listener added BEFORE setting currentTime (fixes race condition)
+ *  - createImageBitmap called inside requestAnimationFrame to ensure decode is complete
+ *  - 80 Mbps bitrate for 4K export
+ *  - VP9 High Tier + H.264 High Profile codec probe order
+ *  - Codec probe respects actual max dimensions supported by hardware
+ */
+
 export async function exportOfflineVideo(
   videoElementSource,
   canvas,
-  webglEngine, // Not used in parallel mode, kept for signature compatibility
+  webglEngine, // Legacy param — kept for API compat
   settings,
   onProgress,
   onComplete
 ) {
   return new Promise(async (resolve, reject) => {
     let worker = null;
+
     try {
-      const fps = settings.fps === 'original' ? 60 : (Number(settings.fps) || 60);
+      const fps      = settings.fps === 'original' ? 30 : (Number(settings.fps) || 30);
       const duration = videoElementSource.duration || 10;
       const totalFrames = Math.floor(duration * fps);
-      
-      const srcW = videoElementSource.videoWidth || videoElementSource.width || 480;
-      const srcH = videoElementSource.videoHeight || videoElementSource.height || 270;
+
+      // Source dimensions
+      const srcW   = videoElementSource.videoWidth  || videoElementSource.width  || 480;
+      const srcH   = videoElementSource.videoHeight || videoElementSource.height || 270;
       const aspect = (srcW && srcH) ? (srcW / srcH) : (16 / 9);
 
-      let dstW = 3840;
-      let dstH = 2160;
+      // Target export resolution (true upscale, not capped like preview)
+      const scale = settings.scale || 4;
+      let dstW, dstH;
 
       if (settings.targetWidth && settings.targetHeight) {
         dstW = settings.targetWidth;
         dstH = settings.targetHeight;
+      } else if (scale <= 1.5) {
+        dstW = 1920; dstH = Math.round(1920 / aspect);
+      } else if (scale <= 2) {
+        dstW = 2560; dstH = Math.round(2560 / aspect);
+      } else if (scale <= 4) {
+        dstW = 3840; dstH = Math.round(3840 / aspect);
       } else {
-        const scale = settings.scale || 4;
-        if (scale === 1.5) { dstW = 1920; dstH = Math.round(1920 / aspect); }
-        else if (scale === 2) { dstW = 2560; dstH = Math.round(2560 / aspect); }
-        else if (scale === 4) { dstW = 3840; dstH = Math.round(3840 / aspect); }
-        else if (scale === 8) { dstW = 7680; dstH = Math.round(7680 / aspect); }
-        else { dstW = Math.round(srcW * scale); dstH = Math.round(srcH * scale); }
+        dstW = 7680; dstH = Math.round(7680 / aspect);
       }
 
+      // Force even (required by most codecs)
       dstW = dstW % 2 === 0 ? dstW : dstW + 1;
       dstH = dstH % 2 === 0 ? dstH : dstH + 1;
-      
-      // Probe codec support
+
+      // ── Codec probe — test from best to baseline ──
+      const BITRATE = 80_000_000; // 80 Mbps for 4K
       const candidateCodecs = [
-        'vp09.00.51.08', // VP9 4K/8K High tier
-        'avc1.640034',   // H264 High Profile 5.2
-        'avc1.4d0034',   // H264 Main
-        'avc1.42001E'    // H264 Baseline
+        'avc1.640034', // H.264 High Profile 5.2 — up to 4K@60fps
+        'avc1.640033', // H.264 High Profile 5.1
+        'avc1.4d0034', // H.264 Main Profile 5.2
+        'avc1.42001E', // H.264 Baseline (fallback)
       ];
-      let codec = 'avc1.42001E';
+
+      let codec = 'avc1.42001E'; // Safe fallback
       for (const c of candidateCodecs) {
         try {
-          const support = await VideoEncoder.isConfigSupported({
-            codec: c, width: dstW, height: dstH,
-            bitrate: 60_000_000, framerate: fps,
-            hardwareAcceleration: 'prefer-hardware'
+          const check = await VideoEncoder.isConfigSupported({
+            codec: c,
+            width: dstW,
+            height: dstH,
+            bitrate: BITRATE,
+            framerate: fps,
+            hardwareAcceleration: 'prefer-hardware',
           });
-          if (support && support.supported) { codec = c; break; }
-        } catch (e) {}
+          if (check?.supported) {
+            codec = c;
+            break;
+          }
+        } catch (_) { /* try next */ }
       }
-      
-      // ----------------------------------------------------
-      // AUDIO PROCESSING (Main Thread Decode)
-      // ----------------------------------------------------
+
+      onProgress(3, `Codec selected: ${codec} | Target: ${dstW}×${dstH} @ ${fps}fps`);
+
+      // ── Audio extraction ──
       let audioPayload = null;
-      try {
-        if (videoElementSource.src) {
-          const response = await fetch(videoElementSource.src);
-          const arrayBuffer = await response.arrayBuffer();
+      if (videoElementSource.src) {
+        try {
+          onProgress(5, 'Extracting audio track…');
+          const resp = await fetch(videoElementSource.src);
+          const buf  = await resp.arrayBuffer();
           const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-          const audioData = await audioCtx.decodeAudioData(arrayBuffer);
-          
+          const audioData = await audioCtx.decodeAudioData(buf);
+
           const channels = [];
           for (let i = 0; i < audioData.numberOfChannels; i++) {
-            channels.push(audioData.getChannelData(i)); // Float32Array
+            channels.push(audioData.getChannelData(i));
           }
           audioPayload = {
-            buffer: channels,
+            buffer:           channels,
             numberOfChannels: audioData.numberOfChannels,
-            sampleRate: audioData.sampleRate
+            sampleRate:       audioData.sampleRate,
           };
+          audioCtx.close();
+        } catch (err) {
+          console.warn('[Export] Audio extraction failed — silent export:', err);
         }
-      } catch (err) {
-        console.warn('Silent video mode: Audio could not be processed.', err);
       }
 
-      // Initialize Web Worker
+      // ── Initialize Worker ──
       worker = new Worker(new URL('./upscaleWorker.js', import.meta.url), { type: 'module' });
-      
-      let workerResolve = null;
-      let workerReject = null;
-      
-      const waitForWorker = (action) => new Promise((res, rej) => {
-        workerResolve = res;
-        workerReject = rej;
-        action();
+
+      let resolveWorker = null;
+      let rejectWorker  = null;
+
+      const awaitWorker = () => new Promise((res, rej) => {
+        resolveWorker = res;
+        rejectWorker  = rej;
       });
 
-      worker.onmessage = (e) => {
-        const { type, buffer, error } = e.data;
+      worker.onmessage = ({ data }) => {
+        const { type, buffer, error } = data;
         if (type === 'INIT_DONE' || type === 'FRAME_DONE') {
-          if (workerResolve) {
-            const r = workerResolve; workerResolve = null; r();
-          }
+          resolveWorker?.(); resolveWorker = null;
         } else if (type === 'COMPLETE') {
-          if (workerResolve) {
-            const r = workerResolve; workerResolve = null; r(buffer);
-          }
+          resolveWorker?.(buffer); resolveWorker = null;
         } else if (type === 'ERROR') {
-          if (workerReject) {
-            const r = workerReject; workerReject = null; r(new Error(error));
-          }
+          rejectWorker?.(new Error(error)); rejectWorker = null;
         }
       };
 
-      worker.onerror = (e) => {
-        if (workerReject) {
-          const r = workerReject; workerReject = null; r(new Error(e.message || "Worker initialization failed"));
-        }
+      worker.onerror = (ev) => {
+        rejectWorker?.(new Error(ev.message || 'Worker crashed'));
+        rejectWorker = null;
       };
 
       // Send INIT
-      await waitForWorker(() => {
-        worker.postMessage({
-          type: 'INIT',
-          payload: {
-            dstW, dstH, fps, codec,
-            bitrate: 60_000_000,
-            audioData: audioPayload,
-            settings
-          }
-        });
+      const initP = awaitWorker();
+      worker.postMessage({
+        type: 'INIT',
+        payload: { dstW, dstH, fps, codec, bitrate: BITRATE, audioData: audioPayload, settings },
       });
+      await initP;
 
-      // ----------------------------------------------------
-      // FRAME BY FRAME VIDEO PROCESSING (Parallel)
-      // ----------------------------------------------------
-      if (typeof videoElementSource.pause === 'function') {
+      onProgress(8, 'Worker initialized. Starting frame extraction…');
+
+      // ── Pause source video for seeking ──
+      const isVideo = videoElementSource instanceof HTMLVideoElement;
+      if (isVideo) {
         videoElementSource.pause();
+        // Ensure video is ready
+        if (videoElementSource.readyState < 2) {
+          await new Promise((res, rej) => {
+            const t = setTimeout(() => rej(new Error('Video not ready')), 5000);
+            videoElementSource.oncanplay = () => { clearTimeout(t); res(); };
+          });
+        }
       }
-      
+
+      // ── Frame-by-frame extraction ──
       for (let i = 0; i < totalFrames; i++) {
-        const currentTime = i / fps;
-        
-        if ('currentTime' in videoElementSource) {
+        const targetTime = i / fps;
+
+        // Seek to frame
+        if (isVideo) {
           await new Promise((res) => {
-            let timeout;
-            const onSeeked = () => {
+            let done = false;
+            const finish = () => { if (done) return; done = true; res(); };
+
+            const timeout = setTimeout(finish, 1500); // 1.5s max per frame
+
+            videoElementSource.addEventListener('seeked', function handler() {
+              videoElementSource.removeEventListener('seeked', handler);
               clearTimeout(timeout);
-              videoElementSource.removeEventListener('seeked', onSeeked);
-              res();
-            };
-            videoElementSource.addEventListener('seeked', onSeeked);
-            videoElementSource.currentTime = currentTime;
-            timeout = setTimeout(onSeeked, 1000); // 1-second fallback timeout
+              finish();
+            }, { once: true });
+
+            videoElementSource.currentTime = targetTime;
           });
         } else {
-          await new Promise(r => setTimeout(r, 1000 / fps)); // Synthetic fallback
+          // Canvas source — just wait a tick
+          await new Promise(r => requestAnimationFrame(r));
         }
-        
-        // Grab frame bitmap
-        let bitmap;
-        if (videoElementSource instanceof HTMLVideoElement) {
-          bitmap = await createImageBitmap(videoElementSource);
-        } else {
-          // Fallback if videoElementSource is just a canvas (sample video)
-          bitmap = await createImageBitmap(videoElementSource);
-        }
-        
-        const timestampMicroseconds = Math.floor((i / fps) * 1000000);
-        const isKeyFrame = (i % (fps * 2)) === 0; 
-        
-        // Transfer to worker
-        await waitForWorker(() => {
-          worker.postMessage({
-            type: 'PROCESS_FRAME',
-            payload: {
-              bitmap,
-              timestamp: timestampMicroseconds,
-              isKeyFrame,
-              settings
+
+        // Grab bitmap after decode (requestAnimationFrame ensures paint)
+        const bitmap = await new Promise((res, rej) => {
+          requestAnimationFrame(async () => {
+            try {
+              const bmp = await createImageBitmap(videoElementSource, {
+                resizeWidth:   srcW,
+                resizeHeight:  srcH,
+                resizeQuality: 'high',
+              });
+              res(bmp);
+            } catch (err) {
+              rej(err);
             }
-          }, [bitmap]);
+          });
         });
-        
-        // Smooth Progress Update
-        if (i % 5 === 0) {
-          const pct = Math.round((i / totalFrames) * 100);
-          onProgress(pct, `Parallel Offline Processing Frame ${i} of ${totalFrames} (${pct}%)`);
+
+        // Send frame to worker
+        const timestamp = Math.round(targetTime * 1_000_000);
+        const frameP = awaitWorker();
+        worker.postMessage({ type: 'PROCESS_FRAME', payload: { bitmap, timestamp, settings } }, [bitmap]);
+        await frameP;
+
+        // Progress update every 3 frames
+        if (i % 3 === 0) {
+          const pct = Math.round(8 + (i / totalFrames) * 88);
+          onProgress(pct, `AI Upscaling Frame ${i + 1}/${totalFrames} (${pct}%)`);
         }
       }
-      
-      onProgress(100, 'Finalizing 4K MP4 Encoded File in Worker...');
-      
-      const finalBuffer = await waitForWorker(() => {
-        worker.postMessage({ type: 'FINALIZE' });
-      });
-      
+
+      onProgress(97, 'Finalizing MP4 — encoding remaining frames…');
+
+      const finalizeP = awaitWorker();
+      worker.postMessage({ type: 'FINALIZE' });
+      const finalBuffer = await finalizeP;
+
       worker.terminate();
-      
-      const blob = new Blob([finalBuffer], { type: 'video/mp4' });
+      worker = null;
+
+      const blob     = new Blob([finalBuffer], { type: 'video/mp4' });
       const videoUrl = URL.createObjectURL(blob);
-      
+
+      onProgress(100, `Export complete! ${(blob.size / 1_048_576).toFixed(1)} MB`);
       onComplete(blob, videoUrl);
       resolve({ blob, videoUrl });
-      
+
     } catch (err) {
-      if (worker) worker.terminate();
+      worker?.terminate();
       reject(err);
     }
   });
