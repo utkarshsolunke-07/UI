@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { WebGLVideoEngine } from '../engine/webglVideoEngine';
+import { computeCanvasFilter } from '../engine/videoUpscalerEngine';
 
 export function useWebglRenderLoop({
   canvasRef,
   rawCanvasRef,
+  midCanvasRef,
   videoRef,
   sampleRef,
   settings,
@@ -17,6 +19,7 @@ export function useWebglRenderLoop({
     const render = () => {
       const canvas = canvasRef.current;
       const rawCanvas = rawCanvasRef.current;
+      const midCanvas = midCanvasRef?.current;
       if (!canvas) {
         animIdRef.current = requestAnimationFrame(render);
         return;
@@ -61,7 +64,7 @@ export function useWebglRenderLoop({
 
       const src = isSample ? sampleRef.current?.canvas : videoRef.current;
 
-      /* 1. Render RAW Canvas (Left Layer) */
+      /* 1. Render RAW Canvas (Left Viewport) */
       if (rawCanvas && src) {
         if (rawCanvas.width !== srcW || rawCanvas.height !== srcH) {
           rawCanvas.width = srcW;
@@ -71,7 +74,21 @@ export function useWebglRenderLoop({
         rawCtx.drawImage(src, 0, 0, srcW, srcH);
       }
 
-      /* 2. Render AI Upscaled & Sharpened Canvas via WebGL (Right Layer) */
+      /* 2. Render Mid-Pass Canvas (Middle Viewport) */
+      if (midCanvas && src) {
+        const midW = Math.round((srcW + dstW) / 2);
+        const midH = Math.round((srcH + dstH) / 2);
+        if (midCanvas.width !== midW || midCanvas.height !== midH) {
+          midCanvas.width = midW;
+          midCanvas.height = midH;
+        }
+        const midCtx = midCanvas.getContext('2d');
+        midCtx.filter = computeCanvasFilter({ ...settings, temp: tempVal });
+        midCtx.drawImage(src, 0, 0, midW, midH);
+        midCtx.filter = 'none';
+      }
+
+      /* 3. Render AI Upscaled & Sharpened Canvas via WebGL (Right Viewport) */
       if (src && webglEngineRef.current) {
         webglEngineRef.current.render(src, {
           sharpness: settings.sharpness ?? 70,
@@ -86,5 +103,5 @@ export function useWebglRenderLoop({
 
     animIdRef.current = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animIdRef.current);
-  }, [settings, isSample, tempVal, canvasRef, rawCanvasRef, videoRef, sampleRef, webglEngineRef]);
+  }, [settings, isSample, tempVal, canvasRef, rawCanvasRef, midCanvasRef, videoRef, sampleRef, webglEngineRef]);
 }
