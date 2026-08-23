@@ -80,6 +80,12 @@ export function useWebglRenderLoop({
       if (currentSettings.targetWidth && currentSettings.targetHeight) {
         dstW = currentSettings.targetWidth;
         dstH = currentSettings.targetHeight;
+      } else if (currentSettings.targetHeight) {
+        dstH = currentSettings.targetHeight;
+        dstW = Math.round(dstH * aspect);
+      } else if (currentSettings.targetWidth) {
+        dstW = currentSettings.targetWidth;
+        dstH = Math.round(dstW / aspect);
       } else {
         const scale = currentSettings.scale || 2;
         dstW = Math.round(srcW * scale);
