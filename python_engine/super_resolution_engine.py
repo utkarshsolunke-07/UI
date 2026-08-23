@@ -1,11 +1,11 @@
-/**
+"""
  * UTKARSH AI SUPER-RESOLUTION PYTHON ENGINE v33.0
  * ============================================================
  * Production Deep Learning Super-Resolution Engine
  * Supports Overlapping Tile Segmentation, FP16 Half-Precision,
  * AMD RCAS Contrast Adaptive Sharpening & Content Classification.
  * ============================================================
- */
+"""
 
 import os
 import sys
