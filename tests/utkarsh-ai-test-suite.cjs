@@ -162,8 +162,8 @@ console.log('\n📦 GROUP 3: Upscale Worker Tests');
 test('Worker imports mp4-muxer', () => {
   assert(upscaleWorker.includes("from 'mp4-muxer'"), 'mp4-muxer not imported');
 });
-test('Worker imports WebGLVideoEngine', () => {
-  assert(upscaleWorker.includes("from './webglVideoEngine.js'"), 'WebGLVideoEngine not imported');
+test('Worker imports OmniUpscalerCore', () => {
+  assert(upscaleWorker.includes("from './omniUpscalerCore.js'"), 'OmniUpscalerCore not imported');
 });
 test('Muxer audio config in constructor (not mutated after)', () => {
   // Bug3 original: muxer.options.audio = ... after construction
@@ -336,8 +336,8 @@ test('All required hooks imported (useState, useRef, useEffect, useCallback)', (
 test('exportOfflineVideo imported from offlineExportEngine', () => {
   assert(videoStudio.includes("from '../engine/offlineExportEngine'"), 'offlineExportEngine not imported');
 });
-test('WebGLVideoEngine imported', () => {
-  assert(videoStudio.includes("from '../engine/webglVideoEngine'"), 'WebGLVideoEngine not imported');
+test('OmniUpscalerCore imported', () => {
+  assert(videoStudio.includes("from '../engine/omniUpscalerCore'"), 'OmniUpscalerCore not imported');
 });
 test('useWebglRenderLoop hook used', () => {
   assert(videoStudio.includes('useWebglRenderLoop('), 'useWebglRenderLoop not called');

@@ -4,7 +4,7 @@ import {
   computeCanvasFilter, drawVignette
 } from '../engine/videoUpscalerEngine';
 import { exportOfflineVideo } from '../engine/offlineExportEngine';
-import { WebGLVideoEngine } from '../engine/webglVideoEngine';
+import { OmniUpscalerCore } from '../engine/omniUpscalerCore';
 import { globalAINeuralEngine } from '../engine/aiNeuralEngine';
 import { useWebglRenderLoop } from '../utils/useWebglRenderLoop';
 import { analyzeFrameWithGemini } from '../engine/geminiAiEngine';

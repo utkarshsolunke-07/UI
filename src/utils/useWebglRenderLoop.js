@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { WebGLVideoEngine } from '../engine/webglVideoEngine';
+import { OmniUpscalerCore } from '../engine/omniUpscalerCore.js';
 
 const TARGET_FPS = 60;
 const FRAME_MS   = 1000 / TARGET_FPS;
@@ -101,12 +101,14 @@ export function useWebglRenderLoop({
         canvas.height = dstH;
       }
 
-      // ── Init / re-init WebGL engine ──
+      // ── Init / re-init OmniUpscalerCore engine ──
       if (!webglEngineRef.current) {
         try {
-          webglEngineRef.current = new WebGLVideoEngine(canvas);
+          const core = new OmniUpscalerCore(canvas);
+          core.init().catch(e => console.warn("OmniCore init warning:", e));
+          webglEngineRef.current = core;
         } catch (e) {
-          console.warn('[RenderLoop] WebGL init failed, using High-Performance Canvas 2D Fallback:', e);
+          console.warn('[RenderLoop] OmniCore init failed, using High-Performance Canvas 2D Fallback:', e);
         }
       }
 

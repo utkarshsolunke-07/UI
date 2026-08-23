@@ -21,7 +21,7 @@ export default function App() {
   const [statusMsg, setStatusMsg]           = useState('');
 
   const [settings, setSettings] = useLocalStorage('utkarsh-ai-settings', {
-    scale: null, model: 'utkarsh_omni_absolute', aiUpscale: true,
+    scale: null, model: 'utkarsh_omni_absolute', aiUpscale: true, hardwareStrategy: 'auto',
     sharpness: 70, denoise: 30, hdr: 40,
     clarity: 65, faceRestore: 65, clahe: 40,
     grain: 0, chroma: 20, bloom: 25, format: 'png', fps: 'original', lut: 'none', temp: 0,

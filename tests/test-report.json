@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-08-23T09:05:34.632Z",
+  "timestamp": "2026-08-23T09:16:32.714Z",
   "total": 99,
   "passed": 99,
   "failed": 0,
@@ -131,7 +131,7 @@
       "status": "PASS"
     },
     {
-      "name": "Worker imports WebGLVideoEngine",
+      "name": "Worker imports OmniUpscalerCore",
       "status": "PASS"
     },
     {
@@ -291,7 +291,7 @@
       "status": "PASS"
     },
     {
-      "name": "WebGLVideoEngine imported",
+      "name": "OmniUpscalerCore imported",
       "status": "PASS"
     },
     {

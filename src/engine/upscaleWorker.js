@@ -10,12 +10,12 @@
  */
 
 import * as Mp4Muxer from 'mp4-muxer';
-import { WebGLVideoEngine } from './webglVideoEngine.js';
+import { OmniUpscalerCore } from './omniUpscalerCore.js';
 
 let muxer            = null;
 let videoEncoder     = null;
 let audioEncoder     = null;
-let webglEngine      = null;
+let omniEngine       = null;
 let canvas           = null;
 let fps              = 30;
 let frameCount       = 0;
@@ -35,7 +35,8 @@ self.onmessage = async function(e) {
     try {
       canvas = new OffscreenCanvas(dstW, dstH);
       try {
-        webglEngine = new WebGLVideoEngine(canvas);
+        omniEngine = new OmniUpscalerCore(canvas);
+        await omniEngine.init();
         console.log('[Worker] WebGL engine initialized. Canvas: ' + dstW + 'x' + dstH + '. Model: ' + (targetSettings.model || 'utkarsh_omni_absolute'));
       } catch (glErr) {
         self.postMessage({ type: 'ERROR', error: 'WebGL init failed: ' + glErr.message });
@@ -153,10 +154,12 @@ self.onmessage = async function(e) {
         bloom:     targetSettings.bloom     != null ? targetSettings.bloom     : 25,
       };
 
-      webglEngine.render(bitmap, renderSettings);
+      omniEngine.render(bitmap, renderSettings);
 
       // FIX-3: Always sync GPU before capture
-      webglEngine.gl.finish();
+      if (omniEngine.webglEngine && omniEngine.webglEngine.gl) {
+        omniEngine.webglEngine.gl.finish();
+      }
 
       const isKeyFrame = (frameCount % keyframeInterval) === 0;
 
