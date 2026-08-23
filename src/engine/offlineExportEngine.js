@@ -202,6 +202,8 @@ export async function exportOfflineVideo(
         }
       }
 
+      const exportStartTime = Date.now();
+
       // Frame-by-frame extraction with per-frame progress
       for (let i = 0; i < totalFrames; i++) {
         const targetTime = i / fps;
@@ -252,9 +254,19 @@ export async function exportOfflineVideo(
         // Minimum per-frame delay to prevent main thread blocking
         await new Promise(r => setTimeout(r, 4));
 
-        // Report progress on EVERY frame with explicit 4-step AI Pipeline status
+        // Report progress with ETA
         const pct = Math.round(8 + (i / totalFrames) * 88);
-        onProgress(pct, `Neural AI Frame ${i + 1} / ${totalFrames} (Feature Map → Denoise → Sub-Pixel → Temporal Polish) — ${dstW}x${dstH} (${pct}%)`);
+        let etaString = '';
+        if (i > 0) {
+          const elapsed = Date.now() - exportStartTime;
+          const msPerFrame = elapsed / i;
+          const framesRemaining = totalFrames - i;
+          const msRemaining = framesRemaining * msPerFrame;
+          const sec = Math.ceil(msRemaining / 1000);
+          const min = Math.floor(sec / 60);
+          etaString = ` [ETA: ${min}m ${(sec % 60).toString().padStart(2, '0')}s]`;
+        }
+        onProgress(pct, `Neural AI Frame ${i + 1} / ${totalFrames} (Feature Map → Sub-Pixel) — ${dstW}x${dstH} (${pct}%)${etaString}`);
       }
 
       onProgress(97, 'Finalizing MP4 — encoding remaining frames...');
