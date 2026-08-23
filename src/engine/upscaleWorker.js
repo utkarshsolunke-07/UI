@@ -149,6 +149,8 @@ self.onmessage = async function(e) {
         model:     targetSettings.model     || 'utkarsh_omni_absolute',
         enableTAA: targetSettings.enableTAA != null ? targetSettings.enableTAA : true,
         taaWeight: targetSettings.taaWeight != null ? targetSettings.taaWeight : 0.35,
+        chroma:    targetSettings.chroma    != null ? targetSettings.chroma    : 20,
+        bloom:     targetSettings.bloom     != null ? targetSettings.bloom     : 25,
       };
 
       webglEngine.render(bitmap, renderSettings);

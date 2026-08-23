@@ -68,6 +68,7 @@ export class ONNXNeuralEngine {
     const data    = imageData.data;
     const len     = data.length;
     const outData = new Uint8ClampedArray(len);
+    outData.set(data);
 
     const isAnime  = modelId.includes('anime') || modelId.includes('cugan') || modelId === 'waifu2x_cugan';
     const isFace   = modelId.includes('codeformer') || modelId.includes('swinir') || modelId === 'codeformer_swinir';

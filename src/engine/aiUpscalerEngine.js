@@ -124,6 +124,7 @@ async function applyDirectionalEdgeSynthesis(data, w, h, strength, onProgress) {
   await new Promise(r => setTimeout(r, 0));
 
   const out = new Uint8ClampedArray(data.length);
+  out.set(data);
 
   for (let y = 1; y < h - 1; y++) {
     if (y % 100 === 0) await new Promise(r => setTimeout(r, 0));
