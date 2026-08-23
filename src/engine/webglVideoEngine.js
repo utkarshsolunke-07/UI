@@ -509,6 +509,12 @@ export class WebGLVideoEngine {
         } else if (u_lutMode == 6) { // Golden Hour
           c.r *= 1.26; c.g *= 1.12; c.b *= 0.76;
           c = pow(max(c, vec3(0.0)), vec3(0.95)); // Lift shadows to golden
+        } else if (u_lutMode == 7) { // Sakuga 2D Anime & Kinetic Motion Punch
+          // Crisp vector contour boost + neon pop
+          c.r = pow(max(c.r, 0.0), 0.76) * 1.35;
+          c.g = pow(max(c.g, 0.0), 0.82) * 1.15;
+          c.b = pow(max(c.b, 0.0), 0.74) * 1.40;
+          c = mix(c, vibrance(c, 1.4), 0.65); // High-vibrance kinetic punch
         }
 
         // ── 6. Bloom Additive Blend ──
@@ -899,7 +905,7 @@ export class WebGLVideoEngine {
 
     const sharpness  = (settings.sharpness ?? 70) / 100;
     const clarity    = (settings.clarity   ?? 65) / 100;
-    const lutNames   = { none:0, cinematic:1, filmic:2, vintage:3, cool:4, cyber:5, golden:6 };
+    const lutNames   = { none:0, cinematic:1, filmic:2, vintage:3, cool:4, cyber:5, golden:6, sakuga:7 };
     const lutMode    = lutNames[settings.lut || 'none'] ?? 0;
     const enableTAA  = this.isWebGL2 && (settings.enableTAA ?? true);
     const now        = performance.now();

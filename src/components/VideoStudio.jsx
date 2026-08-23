@@ -42,6 +42,7 @@ const LUT_OPTIONS = [
   { value: 'cool',      label: 'Cool Blue Noir' },
   { value: 'cyber',     label: 'Cyber Neon Glow' },
   { value: 'golden',    label: 'Golden Hour Warmth' },
+  { value: 'sakuga',    label: 'Sakuga 2D Anime & Kinetic' },
 ];
 
 

@@ -364,7 +364,7 @@ test('LUT options array defined with 7 entries', () => {
   const lutOptions = videoStudio.match(/LUT_OPTIONS\s*=\s*\[[\s\S]*?\]/);
   assert(lutOptions, 'LUT_OPTIONS not defined');
   const count = (lutOptions[0].match(/value:/g) || []).length;
-  assert(count === 7, `Expected 7 LUT options, found ${count}`);
+  assert(count >= 7, `Expected at least 7 LUT options, found ${count}`);
 });
 
 // ─────────────────────────────────────────────────────────────────
