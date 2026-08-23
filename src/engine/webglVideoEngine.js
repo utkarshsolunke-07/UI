@@ -1,20 +1,18 @@
 /**
- * UTKARSH AI WebGL2 Video Engine v32.0
+ * UTKARSH AI WebGL2 Video Engine v33.0
  *
- * 4-PASS PIPELINE (Cons → Pros Upgrade):
- *   Pass 1 → EASU   (Edge-Adaptive Spatial Upsampling — FSR 1.0 Lanczos)
+ * 4-PASS PIPELINE:
+ *   Pass 1 → EASU   (Edge-Adaptive Spatial Upsampling — FSR 1.0 Lanczos + Bilateral Deblock)
  *   Pass 2 → RCAS   (Robust Contrast Adaptive Sharpening — AMD FSR)
- *   Pass 3 → Color  (ACES HDR, LUT Grading, Temperature, Film Grain)
+ *   Pass 3 → Color  (Dual-ACES HDR · Bloom · Chromatic Aberration · Vibrance · LUT · Grain)
  *   Pass 4 → TAA    (Temporal Anti-Aliasing — History clamping + EMA blend)
- *                    ↑ NEW: Eliminates flicker, produces smooth motion,
- *                      same technique as Unreal Engine / DLSS
  *
- * Upgraded v31 → v32 Cons Turned Into Pros:
- *  CON: Single shader pass, no temporal data → flicker
- *  PRO: Full TAA pass with RGBA16F history buffer + EMA + colour clamping
- *
- *  CON: No cross-browser GPU backend detection
- *  PRO: WebGPU/WebGL2 capability detection exposed via static method
+ * v32 → v33 Visual Impact Upgrades:
+ *  + Single-pass Bloom: Bright-region glow sampled from 13 taps, additively blended
+ *  + Chromatic Aberration: Radial RGB split from screen center (cinematic lens fringe)
+ *  + Perceptual Vibrance: Adaptive saturation that protects already-saturated colours
+ *  + Dual-ACES Tonemapper: Filmic ACES dark-lift + Reinhard peak highlight clamp
+ *  + Improved LUT science with proper log-lift and colour science math
  */
 
 export class WebGLVideoEngine {
@@ -335,7 +333,7 @@ export class WebGLVideoEngine {
     }`;
   }
 
-  // PASS 3: Color & HDR Tone Mapping
+  // PASS 3: Color & HDR Tone Mapping — v33 Cinematic Grade
   _fsColor() {
     if (this.isWebGL2) {
       return `#version 300 es
@@ -349,7 +347,11 @@ export class WebGLVideoEngine {
       uniform float u_grain;
       uniform int   u_lutMode;
       uniform float u_time;
+      uniform float u_chroma;  // Chromatic aberration intensity (0.0 - 1.0)
+      uniform float u_bloom;   // Bloom intensity (0.0 - 1.0)
+      uniform vec2  u_dstSize;
 
+      // ── Utilities ──────────────────────────────────────────────
       float hash(vec2 p) {
         p = fract(p * vec2(234.34, 435.345));
         p += dot(p, p + 34.23);
@@ -358,62 +360,144 @@ export class WebGLVideoEngine {
 
       float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 
+      // Dual-ACES: filmic S-curve (dark lift) + Reinhard peak clamp
       vec3 aces(vec3 x) {
-        float a = 2.51, b = 0.03, c2 = 2.43, d = 0.59, e2 = 0.14;
-        return clamp((x * (a * x + b)) / (x * (c2 * x + d) + e2), 0.0, 1.0);
+        // ACES approximation (Narkowicz 2015)
+        const float a = 2.51, b = 0.03, c2 = 2.43, d = 0.59, e2 = 0.14;
+        vec3 acesCol = clamp((x * (a * x + b)) / (x * (c2 * x + d) + e2), 0.0, 1.0);
+        // Reinhard on luminance channel only — prevents colour shift at peaks
+        float lumX = luma(x);
+        float reinhardScale = lumX / max(lumX + 1.0, 0.0001);
+        return mix(acesCol, x * reinhardScale / max(lumX, 0.0001), smoothstep(0.6, 1.0, lumX));
+      }
+
+      // Perceptual Vibrance: boosts low-saturation colours, leaves high-sat colours untouched
+      vec3 vibrance(vec3 c, float strength) {
+        float maxC = max(c.r, max(c.g, c.b));
+        float minC = min(c.r, min(c.g, c.b));
+        float sat = (maxC - minC) / max(maxC, 0.0001);
+        float vibranceMask = 1.0 - sat; // Protect already-saturated pixels
+        float lumV = luma(c);
+        return mix(vec3(lumV), c, 1.0 + strength * vibranceMask * 0.9);
+      }
+
+      // Single-Pass Bloom: 13-tap cross + diagonal gather on bright regions
+      vec3 bloom(vec2 uv, float intensity) {
+        if (intensity <= 0.001) return vec3(0.0);
+        vec2 d = 1.0 / u_dstSize;
+        vec3 acc = vec3(0.0);
+        float wTotal = 0.0;
+
+        // 13-tap weighted gather (cross + diagonals + center)
+        vec2 offsets[13];
+        float weights[13];
+        offsets[0]  = vec2( 0.0,  0.0); weights[0]  = 4.0;
+        offsets[1]  = vec2(-1.0,  0.0); weights[1]  = 2.0;
+        offsets[2]  = vec2( 1.0,  0.0); weights[2]  = 2.0;
+        offsets[3]  = vec2( 0.0, -1.0); weights[3]  = 2.0;
+        offsets[4]  = vec2( 0.0,  1.0); weights[4]  = 2.0;
+        offsets[5]  = vec2(-2.0,  0.0); weights[5]  = 1.0;
+        offsets[6]  = vec2( 2.0,  0.0); weights[6]  = 1.0;
+        offsets[7]  = vec2( 0.0, -2.0); weights[7]  = 1.0;
+        offsets[8]  = vec2( 0.0,  2.0); weights[8]  = 1.0;
+        offsets[9]  = vec2(-1.0, -1.0); weights[9]  = 1.0;
+        offsets[10] = vec2( 1.0, -1.0); weights[10] = 1.0;
+        offsets[11] = vec2(-1.0,  1.0); weights[11] = 1.0;
+        offsets[12] = vec2( 1.0,  1.0); weights[12] = 1.0;
+
+        for (int i = 0; i < 13; i++) {
+          vec3 s = texture(u_sharpened, clamp(uv + offsets[i] * d * 3.0, vec2(0.0), vec2(1.0))).rgb;
+          // Only contribute if pixel is above bloom threshold (bright areas only)
+          float brightness = luma(s);
+          float threshold = smoothstep(0.55, 0.85, brightness);
+          acc += s * threshold * weights[i];
+          wTotal += weights[i];
+        }
+        return (acc / wTotal) * intensity * 0.45;
       }
 
       void main() {
-        vec4 col = texture(u_sharpened, v_uv);
-        vec3 c = col.rgb;
-        float lum = luma(c);
+        vec2 uv = v_uv;
 
-        float hdrStrength = u_hdr / 100.0;
-        c = mix(c, aces(c * (1.0 + hdrStrength * 0.6)), hdrStrength * 0.5);
-        float satBoost = 1.0 + hdrStrength * 0.55;
-        c = mix(vec3(lum), c, satBoost);
-
-        float tNorm = u_temp / 50.0;
-        c.r += tNorm * 0.1;
-        c.g += tNorm * 0.04;
-        c.b -= tNorm * 0.12;
-
-        float lumNew = luma(c);
-        if (u_lutMode == 1) {
-          vec3 teal   = vec3(0.0, 0.8, 1.0);
-          vec3 orange = vec3(1.0, 0.55, 0.1);
-          vec3 grade  = mix(teal, orange, lumNew);
-          c = mix(c, c * grade * 1.08, 0.22);
-          c.b = pow(max(c.b, 0.0), 1.12) * 0.85;
-          c.r = pow(max(c.r, 0.0), 0.88) * 1.12;
-        } else if (u_lutMode == 2) {
-          c = pow(max(c, vec3(0.0)), vec3(0.92)) * 1.06;
-          c = mix(c, vec3(lumNew), 0.04);
-        } else if (u_lutMode == 3) {
-          c.r *= 1.14; c.g *= 1.04; c.b *= 0.80;
-          c = mix(c, vec3(lumNew), 0.08);
-          c = pow(max(c, vec3(0.0)), vec3(0.96));
-        } else if (u_lutMode == 4) {
-          c.r *= 0.82; c.b *= 1.28; c.g *= 0.92;
-          c = mix(c, vec3(lumNew), 0.12);
-        } else if (u_lutMode == 5) {
-          c.r = pow(max(c.r, 0.0), 0.80) * 1.30;
-          c.b = pow(max(c.b, 0.0), 0.78) * 1.40;
-          c.g *= 0.85;
-        } else if (u_lutMode == 6) {
-          c.r *= 1.24; c.g *= 1.10; c.b *= 0.78;
+        // ── 1. Chromatic Aberration (radial RGB split from screen centre) ──
+        vec3 c;
+        if (u_chroma > 0.001) {
+          vec2 center = uv - 0.5;
+          float dist = length(center);
+          float caStrength = u_chroma * 0.012 * dist; // Stronger at edges, zero at center
+          vec2 dir = normalize(center + vec2(0.0001));
+          float r = texture(u_sharpened, clamp(uv + dir * caStrength,        vec2(0.0), vec2(1.0))).r;
+          float g = texture(u_sharpened, uv).g;
+          float b = texture(u_sharpened, clamp(uv - dir * caStrength * 0.7,  vec2(0.0), vec2(1.0))).b;
+          c = vec3(r, g, b);
+        } else {
+          c = texture(u_sharpened, uv).rgb;
         }
 
-        float grainStrength = (u_grain / 10.0) * 0.045;
-        float noise = (hash(v_uv * 2000.0 + u_time * 0.01) - 0.5) * grainStrength;
-        float grainMask = 1.0 - abs(lumNew - 0.5) * 1.6;
+        float lum = luma(c);
+
+        // ── 2. Dual-ACES HDR Tonemapping ──
+        float hdrStrength = u_hdr / 100.0;
+        vec3 tonemapped = aces(c * (1.0 + hdrStrength * 0.55));
+        c = mix(c, tonemapped, hdrStrength * 0.65);
+
+        // ── 3. Vibrance (adaptive saturation) ──
+        float vibranceAmt = hdrStrength * 0.7;
+        c = vibrance(c, vibranceAmt);
+
+        // ── 4. Color Temperature ──
+        float tNorm = u_temp / 50.0;
+        c.r += tNorm * 0.10;
+        c.g += tNorm * 0.035;
+        c.b -= tNorm * 0.12;
+
+        // ── 5. LUT Colour Grading ──
+        float lumNew = luma(c);
+        if (u_lutMode == 1) {        // Cinematic Teal & Orange
+          vec3 teal   = vec3(0.05, 0.82, 1.0);
+          vec3 orange = vec3(1.0,  0.52, 0.08);
+          vec3 grade  = mix(teal, orange, pow(lumNew, 0.9));
+          c = mix(c, c * grade * 1.06, 0.24);
+          c.b = pow(max(c.b, 0.0), 1.1) * 0.88;
+          c.r = pow(max(c.r, 0.0), 0.9) * 1.10;
+        } else if (u_lutMode == 2) { // Filmic Log→Rec.709
+          c = pow(max(c, vec3(0.0)), vec3(0.9)) * 1.07;
+          c = mix(c, vec3(lumNew), 0.03);
+          c = clamp(c * 1.02 - 0.01, 0.0, 1.0); // Lift blacks slightly
+        } else if (u_lutMode == 3) { // Vintage 35mm
+          c.r *= 1.16; c.g *= 1.05; c.b *= 0.78;
+          c = mix(c, vec3(lumNew), 0.07);
+          c = pow(max(c, vec3(0.0)), vec3(0.94));
+          c = mix(c, vec3(luma(c)), 0.04); // Slight desaturation for aged look
+        } else if (u_lutMode == 4) { // Cool Blue Noir
+          c.r *= 0.80; c.b *= 1.32; c.g *= 0.91;
+          c = mix(c, vec3(lumNew), 0.14);
+          c = pow(max(c, vec3(0.0)), vec3(1.05)); // Darken shadows
+        } else if (u_lutMode == 5) { // Neon Cyberpunk
+          c.r = pow(max(c.r, 0.0), 0.78) * 1.32;
+          c.b = pow(max(c.b, 0.0), 0.76) * 1.42;
+          c.g *= 0.82;
+          c = mix(c, vibrance(c, 1.2), 0.5); // Extra vibrance punch
+        } else if (u_lutMode == 6) { // Golden Hour
+          c.r *= 1.26; c.g *= 1.12; c.b *= 0.76;
+          c = pow(max(c, vec3(0.0)), vec3(0.95)); // Lift shadows to golden
+        }
+
+        // ── 6. Bloom Additive Blend ──
+        vec3 bloomCol = bloom(uv, u_bloom);
+        c += bloomCol;
+
+        // ── 7. Film Grain (luminance-masked, temporally animated) ──
+        float grainStrength = (u_grain / 10.0) * 0.044;
+        float noise = (hash(v_uv * 1800.0 + u_time * 0.013) - 0.5) * grainStrength;
+        float grainMask = 1.0 - abs(luma(c) - 0.5) * 1.5;
         c += noise * max(grainMask, 0.0);
 
-        fragColor = vec4(clamp(c, 0.0, 1.0), col.a);
+        fragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
       }`;
     }
 
-    // WebGL 1 Shader
+    // WebGL 1 Fallback Shader (no bloom / CA — too expensive on WebGL1)
     return `
     precision highp float;
     varying vec2 v_uv;
@@ -427,7 +511,10 @@ export class WebGLVideoEngine {
       float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
 
       float hdrStrength = u_hdr / 100.0;
-      c = mix(vec3(lum), c, 1.0 + hdrStrength * 0.4);
+      c = mix(vec3(lum), c, 1.0 + hdrStrength * 0.45);
+      // Simple ACES approximation
+      c = clamp((c * (2.51 * c + 0.03)) / (c * (2.43 * c + 0.59) + 0.14), 0.0, 1.0);
+      c = mix(col.rgb, c, hdrStrength * 0.55);
 
       float tNorm = u_temp / 50.0;
       c.r += tNorm * 0.08;
@@ -436,6 +523,7 @@ export class WebGLVideoEngine {
       gl_FragColor = vec4(clamp(c, 0.0, 1.0), col.a);
     }`;
   }
+
 
   // PASS 4: TAA (Temporal Anti-Aliasing with detail preservation)
   _fsTAA() {
@@ -568,6 +656,9 @@ export class WebGLVideoEngine {
       grain:     gl.getUniformLocation(this.progColor, 'u_grain'),
       lutMode:   gl.getUniformLocation(this.progColor, 'u_lutMode'),
       time:      gl.getUniformLocation(this.progColor, 'u_time'),
+      chroma:    gl.getUniformLocation(this.progColor, 'u_chroma'),
+      bloom:     gl.getUniformLocation(this.progColor, 'u_bloom'),
+      dstSize:   gl.getUniformLocation(this.progColor, 'u_dstSize'),
     };
 
     this.locTAA = {
@@ -839,6 +930,9 @@ export class WebGLVideoEngine {
     if (this.locColor.grain)   gl.uniform1f(this.locColor.grain,   settings.grain ?? 2);
     if (this.locColor.lutMode) gl.uniform1i(this.locColor.lutMode, lutMode);
     if (this.locColor.time)    gl.uniform1f(this.locColor.time,    now);
+    if (this.locColor.chroma)  gl.uniform1f(this.locColor.chroma,  (settings.chroma ?? 20) / 100);
+    if (this.locColor.bloom)   gl.uniform1f(this.locColor.bloom,   (settings.bloom  ?? 25) / 100);
+    if (this.locColor.dstSize) gl.uniform2f(this.locColor.dstSize, dstW, dstH);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     // ─────── PASS 4: TAA ───────

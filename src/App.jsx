@@ -5,6 +5,7 @@ import VideoStudio from './components/VideoStudio';
 import ImageStudio from './components/ImageStudio';
 import { upscaleImage } from './engine/aiUpscalerEngine';
 import { prewarmOfflineEngine } from './engine/offlineExportEngine';
+import { useLocalStorage } from './utils/useLocalStorage';
 import './App.css';
 
 export default function App() {
@@ -19,11 +20,11 @@ export default function App() {
   const [progress, setProgress]             = useState(0);
   const [statusMsg, setStatusMsg]           = useState('');
 
-  const [settings, setSettings] = useState({
+  const [settings, setSettings] = useLocalStorage('utkarsh-ai-settings', {
     scale: null, model: 'utkarsh_omni_absolute', aiUpscale: true,
     sharpness: 70, denoise: 30, hdr: 40,
     clarity: 65, faceRestore: 65, clahe: 40,
-    grain: 0, format: 'png', fps: 'original', lut: 'none', temp: 0,
+    grain: 0, chroma: 20, bloom: 25, format: 'png', fps: 'original', lut: 'none', temp: 0,
     targetWidth: null, targetHeight: 2160,
   });
 
