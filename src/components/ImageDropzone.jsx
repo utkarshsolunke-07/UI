@@ -8,6 +8,7 @@ export default function ImageDropzone({ onImageSelected }) {
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (file) processFile(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const processFile = (file) => {

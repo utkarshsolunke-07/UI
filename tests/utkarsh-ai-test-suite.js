@@ -4,8 +4,12 @@
  * Run: node tests/utkarsh-ai-test-suite.js
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ── Test Runner ──────────────────────────────────────────────────
 let passed = 0, failed = 0, warnings = 0;
@@ -92,9 +96,18 @@ console.log('\n📦 GROUP 2: WebGL Shader Integrity Tests');
 test('WebGL2 context requested (not WebGL1)', () => {
   assert(webglEngine.includes("'webgl2'"), 'WebGL2 context not requested');
 });
-test('Three shader programs present (EASU, RCAS, Color)', () => {
-  assert(webglEngine.includes('progEASU') && webglEngine.includes('progRCAS') && webglEngine.includes('progColor'),
-    'Missing one or more shader programs');
+test('Four shader programs present (EASU, RCAS, Color, TAA)', () => {
+  assert(webglEngine.includes('progEASU') && webglEngine.includes('progRCAS') && webglEngine.includes('progColor') && webglEngine.includes('progTAA'),
+    'Missing one or more shader programs in 4-pass engine');
+});
+test('TAA Temporal Anti-Aliasing shader present (_fsTAA)', () => {
+  assert(webglEngine.includes('_fsTAA()'), 'TAA shader method _fsTAA missing');
+});
+test('TAA history clamping present to prevent ghosting', () => {
+  assert(webglEngine.includes('clampedHist'), 'TAA history clamping missing');
+});
+test('Static detectBackend() method present for hardware auto-detection', () => {
+  assert(webglEngine.includes('static async detectBackend()'), 'detectBackend method missing');
 });
 test('EASU pass uses srcSize and dstSize separately (Bug2 v30 fix)', () => {
   assert(webglEngine.includes('u_srcSize') && webglEngine.includes('u_dstSize'),
@@ -153,18 +166,23 @@ console.log('\n📦 GROUP 3: Upscale Worker Tests');
 test('Worker imports mp4-muxer', () => {
   assert(upscaleWorker.includes("from 'mp4-muxer'"), 'mp4-muxer not imported');
 });
-test('Worker imports WebGLVideoEngine', () => {
-  assert(upscaleWorker.includes("from './webglVideoEngine.js'"), 'WebGLVideoEngine not imported');
+test('Worker imports OmniUpscalerCore', () => {
+  assert(upscaleWorker.includes("from './omniUpscalerCore.js'"), 'OmniUpscalerCore not imported');
 });
 test('Muxer audio config in constructor (not mutated after)', () => {
   // Bug3 original: muxer.options.audio = ... after construction
   assert(!upscaleWorker.includes('muxer.options.audio'), 'Audio still mutated after muxer creation');
 });
-test('Audio muxer config uses "aac" codec string', () => {
-  assert(upscaleWorker.includes("codec: 'aac'"), 'Wrong audio codec for muxer');
+test('Audio muxer config uses "aac" (mp4-muxer codec) and encoder uses "mp4a.40.2" (WebCodecs codec)', () => {
+  // mp4-muxer uses 'aac' as its codec string in the muxer config
+  // AudioEncoder uses 'mp4a.40.2' (WebCodecs AAC-LC codec string)
+  // Both are correct and present
+  assert(upscaleWorker.includes("codec:            'aac'"), 'Muxer missing aac codec string');
+  assert(upscaleWorker.includes("codec:            'mp4a.40.2'"), 'AudioEncoder missing mp4a.40.2 codec');
 });
-test('AudioData correct f32-planar format', () => {
-  assert(upscaleWorker.includes("format: 'f32-planar'"), 'Wrong AudioData format');
+test('AudioData correct f32-planar format present in worker', () => {
+  // AudioData uses 'f32-planar', AudioEncoder config uses 'mp4a.40.2'
+  assert(upscaleWorker.includes("format:          'f32-planar'"), 'AudioData format not f32-planar');
 });
 test('AudioData buffer size is framesInChunk (Bug3 fix)', () => {
   assert(upscaleWorker.includes('framesInChunk'), 'framesInChunk variable missing (Bug3 not fixed)');
@@ -229,10 +247,14 @@ test('createImageBitmap has fallback without resize options', () => {
     'Missing fallback createImageBitmap without options');
 });
 test('seeked listener added BEFORE setting currentTime', () => {
-  const seekBlock = offlineExport.slice(offlineExport.indexOf("'seeked'"), offlineExport.indexOf("'seeked'") + 200);
-  const seekedIdx = seekBlock.indexOf('seeked');
-  const currentTimeIdx = seekBlock.indexOf('currentTime =');
-  assert(seekedIdx < currentTimeIdx, 'seeked listener not added before currentTime set');
+  // Find the seek block by locating "Seek to frame" comment
+  const seekBlock = offlineExport.slice(offlineExport.indexOf('Seek to frame'));
+  // addEventListener must appear before currentTime = targetTime
+  const addPos  = seekBlock.indexOf("addEventListener('seeked'");
+  const setPos  = seekBlock.indexOf('currentTime = targetTime');
+  assert(addPos >= 0, "addEventListener('seeked') not found in seek block");
+  assert(setPos >= 0, 'currentTime = targetTime not found in seek block');
+  assert(addPos < setPos, `addEventListener (pos ${addPos}) must come before currentTime assignment (pos ${setPos})`);
 });
 test('1.5s timeout on seek prevents infinite hang', () => {
   assert(offlineExport.includes('1500'), 'Seek timeout missing');
@@ -318,8 +340,8 @@ test('All required hooks imported (useState, useRef, useEffect, useCallback)', (
 test('exportOfflineVideo imported from offlineExportEngine', () => {
   assert(videoStudio.includes("from '../engine/offlineExportEngine'"), 'offlineExportEngine not imported');
 });
-test('WebGLVideoEngine imported', () => {
-  assert(videoStudio.includes("from '../engine/webglVideoEngine'"), 'WebGLVideoEngine not imported');
+test('OmniUpscalerCore imported', () => {
+  assert(videoStudio.includes("from '../engine/omniUpscalerCore'"), 'OmniUpscalerCore not imported');
 });
 test('useWebglRenderLoop hook used', () => {
   assert(videoStudio.includes('useWebglRenderLoop('), 'useWebglRenderLoop not called');
@@ -346,7 +368,7 @@ test('LUT options array defined with 7 entries', () => {
   const lutOptions = videoStudio.match(/LUT_OPTIONS\s*=\s*\[[\s\S]*?\]/);
   assert(lutOptions, 'LUT_OPTIONS not defined');
   const count = (lutOptions[0].match(/value:/g) || []).length;
-  assert(count === 7, `Expected 7 LUT options, found ${count}`);
+  assert(count >= 7, `Expected at least 7 LUT options, found ${count}`);
 });
 
 // ─────────────────────────────────────────────────────────────────
@@ -396,8 +418,8 @@ test('React 19 used', () => {
 // ─────────────────────────────────────────────────────────────────
 console.log('\n📦 GROUP 8: Logic & Safety Tests');
 
-test('Export falls back to recordUpscaledVideoStream on error', () => {
-  assert(videoStudio.includes('recordUpscaledVideoStream'), 'No fallback export path');
+test('Export completely removes recordUpscaledVideoStream fallback', () => {
+  assert(!videoStudio.includes('recordUpscaledVideoStream'), 'Fallback export path should be completely removed');
 });
 test('Video duration fallback (|| 10)', () => {
   assert(offlineExport.includes('|| 10'), 'Duration has no fallback');

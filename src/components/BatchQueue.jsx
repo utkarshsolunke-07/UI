@@ -11,15 +11,15 @@ export default function BatchQueue({ globalSettings }) {
   const [queue, setQueue] = useState([]);
   const [isProcessingQueue, setIsProcessingQueue] = useState(false);
   const [activeItemIndex, setActiveItemIndex] = useState(-1);
+  const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Handle Multi-file upload
-  const handleFilesAdded = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
+  const addFilesToQueue = (files) => {
+    const validFiles = Array.from(files || []).filter((file) => file.type.startsWith('image/'));
+    if (!validFiles.length) return;
 
-    const newItems = files.map((file, idx) => ({
-      id: `${Date.now()}_${idx}`,
+    const newItems = validFiles.map((file, idx) => ({
+      id: `${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 4)}`,
       file,
       name: file.name,
       size: (file.size / 1024 / 1024).toFixed(2),
@@ -31,6 +31,29 @@ export default function BatchQueue({ globalSettings }) {
     }));
 
     setQueue((prev) => [...prev, ...newItems]);
+  };
+
+  const handleFilesAdded = (e) => {
+    addFilesToQueue(e.target.files);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length) {
+      addFilesToQueue(e.dataTransfer.files);
+    }
   };
 
   const removeItem = (id) => {
@@ -127,7 +150,12 @@ export default function BatchQueue({ globalSettings }) {
   };
 
   return (
-    <div className="batch-container">
+    <div
+      className={`batch-container ${isDragOver ? 'ring-2 ring-cyan-400 bg-cyan-950/20' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       {/* Batch Header Bar */}
       <div className="batch-header-bar">
         <div className="batch-title-group">
@@ -174,10 +202,13 @@ export default function BatchQueue({ globalSettings }) {
 
       {/* Queue List Table */}
       {queue.length === 0 ? (
-        <div className="empty-batch-card" onClick={() => fileInputRef.current?.click()}>
+        <div
+          className={`empty-batch-card ${isDragOver ? 'border-cyan-400 bg-cyan-500/10' : ''}`}
+          onClick={() => fileInputRef.current?.click()}
+        >
           <UploadCloud className="empty-batch-icon" />
-          <h3>No Images in Queue</h3>
-          <p>Click here or drag multiple image files to begin batch upscaling</p>
+          <h3>{isDragOver ? 'Drop Images to Add to Batch' : 'No Images in Queue'}</h3>
+          <p>Click here or drag & drop multiple image files (PNG, JPG, WebP) to begin batch upscaling</p>
         </div>
       ) : (
         <div className="queue-list">
@@ -192,7 +223,7 @@ export default function BatchQueue({ globalSettings }) {
 
               <div className="queue-info-col">
                 <h4 className="queue-filename">{item.name}</h4>
-                <p className="queue-meta">{item.size} MB • Scale: {globalSettings.scale}x ({OPEN_SOURCE_AI_MODELS[globalSettings.model]?.name})</p>
+                <p className="queue-meta">{item.size} MB • Scale: {globalSettings.scale || 2}x ({OPEN_SOURCE_AI_MODELS[globalSettings.model]?.name || 'Utkarsh Master'})</p>
 
                 {item.status === 'processing' && (
                   <div className="queue-progress-bar">

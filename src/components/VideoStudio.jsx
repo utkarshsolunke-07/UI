@@ -65,6 +65,7 @@ export default function VideoStudio({ settings, setSettings }) {
   const [activeTab, setActiveTab]             = useState('enhance');
   const [isPreviewOpen, setIsPreviewOpen]     = useState(false);
   const [viewMode, setViewMode]               = useState('side-by-side'); // 'side-by-side' (default) or 'split'
+  const [isDragOver, setIsDragOver]           = useState(false);
 
 
 
@@ -135,6 +136,24 @@ export default function VideoStudio({ settings, setSettings }) {
     setVideoSrc(URL.createObjectURL(file));
     setExportedUrl(null);
     setIsPlaying(true);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFile(file);
   };
 
   const resetToSample = () => {
@@ -264,7 +283,18 @@ export default function VideoStudio({ settings, setSettings }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+    <div
+      style={{
+        display: 'flex', flexDirection: 'column', gap: '1.2rem',
+        borderRadius: '16px', transition: 'all 0.2s ease',
+        outline: isDragOver ? '2px dashed var(--primary)' : 'none',
+        outlineOffset: '4px',
+        backgroundColor: isDragOver ? 'rgba(var(--primary-rgb), 0.05)' : 'transparent'
+      }}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
 
       {/* Mode Switcher Bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
