@@ -157,9 +157,9 @@ export function useWebglRenderLoop({
           if (ctx) {
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
-            const sharp = currentSettings.sharpness ?? 70;
-            const hdr   = currentSettings.hdr ?? 40;
-            ctx.filter = `contrast(${100 + sharp * 0.4}%) saturate(${100 + hdr * 0.5}%) brightness(${100 + hdr * 0.1}%)`;
+            const sharp = currentSettings.sharpness ?? 75;
+            const hdr   = currentSettings.hdr ?? 45;
+            ctx.filter = `contrast(${108 + sharp * 0.4}%) saturate(${110 + hdr * 0.4}%) brightness(${102 + hdr * 0.08}%)`;
             ctx.drawImage(src, 0, 0, dstW, dstH);
             ctx.filter = 'none';
           }

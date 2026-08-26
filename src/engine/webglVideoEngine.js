@@ -623,7 +623,7 @@ export class WebGLVideoEngine {
         c.g += tNorm * 0.035;
         c.b -= tNorm * 0.12;
 
-        // ── 5. LUT Colour Grading ──
+        // ── 5. LUT Colour Grading & Master Cinematic Palette ──
         float lumNew = luma(c);
         if (u_lutMode == 1) {        // Cinematic Teal & Orange
           vec3 teal   = vec3(0.05, 0.82, 1.0);
@@ -659,13 +659,47 @@ export class WebGLVideoEngine {
           c.g = pow(max(c.g, 0.0), 0.82) * 1.15;
           c.b = pow(max(c.b, 0.0), 0.74) * 1.40;
           c = mix(c, vibrance(c, 1.4), 0.65); // High-vibrance kinetic punch
+        } else {
+          // Default Master Grade: Subtle S-curve + High Dynamic Micro-Contrast
+          c = pow(max(c, vec3(0.0)), vec3(0.94)) * 1.08;
         }
 
-        // ── 6. Bloom Additive Blend ──
+        // ── 6. Master Three-Point Lighting Engine ──
+        // Calculates synthetic surface normal gradients for Key, Fill & Rim lighting
+        vec2 dStep = 1.0 / u_dstSize;
+        float lRight = luma(texture(u_sharpened, clamp(uv + vec2(dStep.x, 0.0), vec2(0.0), vec2(1.0))).rgb);
+        float lLeft  = luma(texture(u_sharpened, clamp(uv - vec2(dStep.x, 0.0), vec2(0.0), vec2(1.0))).rgb);
+        float lTop   = luma(texture(u_sharpened, clamp(uv - vec2(0.0, dStep.y), vec2(0.0), vec2(1.0))).rgb);
+        float lBot   = luma(texture(u_sharpened, clamp(uv + vec2(0.0, dStep.y), vec2(0.0), vec2(1.0))).rgb);
+
+        vec3 norm = normalize(vec3(lLeft - lRight, lTop - lBot, 0.18));
+
+        // Key Light (Top-Right Warm Directional Highlight)
+        vec3 keyDir = normalize(vec3(0.5, -0.6, 0.6));
+        float keyIntensity = max(0.0, dot(norm, keyDir));
+        vec3 keyLight = vec3(1.05, 0.96, 0.85) * keyIntensity * 0.18;
+
+        // Fill Light (Bottom-Left Cool Ambient Shadow Lift)
+        vec3 fillDir = normalize(vec3(-0.5, 0.5, 0.4));
+        float fillIntensity = max(0.0, dot(norm, fillDir));
+        vec3 fillLight = vec3(0.25, 0.45, 0.75) * fillIntensity * 0.12;
+
+        // Back Light / Rim Light (Edge Separation Contour)
+        float rimFactor = pow(1.0 - max(0.0, dot(norm, vec3(0.0, 0.0, 1.0))), 3.5);
+        vec3 rimLight = vec3(0.0, 0.85, 1.0) * rimFactor * 0.22;
+
+        c += (keyLight + fillLight + rimLight);
+
+        // ── 7. Master Composition & Vignette Framing ──
+        float distFromCenter = length(uv - 0.5);
+        float vignette = smoothstep(0.85, 0.35, distFromCenter * 1.12);
+        c *= mix(0.72, 1.0, vignette);
+
+        // ── 8. Bloom Additive Blend ──
         vec3 bloomCol = bloom(uv, u_bloom);
         c += bloomCol;
 
-        // ── 7. Film Grain (luminance-masked, temporally animated) ──
+        // ── 9. Film Grain (luminance-masked, temporally animated) ──
         float grainStrength = (u_grain / 10.0) * 0.044;
         float noise = (hash(v_uv * 1800.0 + u_time * 0.013) - 0.5) * grainStrength;
         float grainMask = 1.0 - abs(luma(c) - 0.5) * 1.5;
