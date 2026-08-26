@@ -24,14 +24,6 @@ export default function NeuralParticleCanvas() {
     };
     window.addEventListener('resize', handleResize);
 
-    // Mouse position tracking
-    const mouse = { x: -1000, y: -1000, radius: 160 };
-    const handleMouseMove = (e) => {
-      mouse.x = e.clientX;
-      mouse.y = e.clientY;
-    };
-    window.addEventListener('mousemove', handleMouseMove, { passive: true });
-
     // Particle nodes definition
     const PARTICLE_COUNT = Math.min(Math.floor((width * height) / 18000), 70);
     const particles = [];
@@ -68,16 +60,6 @@ export default function NeuralParticleCanvas() {
         // Bounce boundaries
         if (p.x < 0 || p.x > width)  p.vx *= -1;
         if (p.y < 0 || p.y > height) p.vy *= -1;
-
-        // Mouse repulsion
-        const dx = mouse.x - p.x;
-        const dy = mouse.y - p.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < mouse.radius && dist > 0) {
-          const force = (mouse.radius - dist) / mouse.radius;
-          p.x -= (dx / dist) * force * 3;
-          p.y -= (dy / dist) * force * 3;
-        }
 
         // Pulse alpha
         p.pulseAngle += p.pulseSpeed;
@@ -119,7 +101,6 @@ export default function NeuralParticleCanvas() {
     return () => {
       cancelAnimationFrame(animId);
       window.removeEventListener('resize', handleResize);
-      window.removeEventListener('mousemove', handleMouseMove);
     };
   }, []);
 

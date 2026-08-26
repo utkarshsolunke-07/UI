@@ -37,24 +37,7 @@ export default function App() {
     document.body.setAttribute('data-theme', activeTheme);
   }, [activeTheme]);
 
-  /* Interactive Mouse Spotlight Tracking with rAF throttling */
-  useEffect(() => {
-    let ticking = false;
-    const handlePointerMove = (e) => {
-      if (!ticking) {
-        const x = e.clientX;
-        const y = e.clientY;
-        requestAnimationFrame(() => {
-          document.documentElement.style.setProperty('--mouse-x', `${x}px`);
-          document.documentElement.style.setProperty('--mouse-y', `${y}px`);
-          ticking = false;
-        });
-        ticking = true;
-      }
-    };
-    window.addEventListener('pointermove', handlePointerMove, { passive: true });
-    return () => window.removeEventListener('pointermove', handlePointerMove);
-  }, []);
+
 
   /* Pre-warm the export worker */
   useEffect(() => {
@@ -131,9 +114,6 @@ export default function App() {
     <>
       {/* 60 FPS Interactive Neural Particle Canvas */}
       <NeuralParticleCanvas />
-
-      {/* Interactive Mouse Spotlight Radial Glow */}
-      <div className="mouse-spotlight" aria-hidden="true" />
 
 
       {/* Cyber CRT Scanline Shader Overlay */}
