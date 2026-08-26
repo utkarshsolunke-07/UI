@@ -3,6 +3,7 @@ import confetti from 'canvas-confetti';
 import Header from './components/Header';
 import VideoStudio from './components/VideoStudio';
 import ImageStudio from './components/ImageStudio';
+import ErrorBoundary from './components/ErrorBoundary';
 import { upscaleImage } from './engine/aiUpscalerEngine';
 import { prewarmOfflineEngine } from './engine/offlineExportEngine';
 import { useLocalStorage } from './utils/useLocalStorage';
@@ -147,23 +148,27 @@ export default function App() {
 
         <main className="main-content">
           {activeTab === 'video' && (
-            <VideoStudio settings={settings} setSettings={setSettings} />
+            <ErrorBoundary key="video-studio">
+              <VideoStudio settings={settings} setSettings={setSettings} />
+            </ErrorBoundary>
           )}
           {activeTab === 'image' && (
-            <ImageStudio
-              currentImage={currentImage}
-              handleImageSelected={handleImageSelected}
-              settings={settings}
-              setSettings={setSettings}
-              triggerUpscale={triggerUpscale}
-              isProcessing={isProcessing}
-              currentImgElem={currentImgElem}
-              upscaledResult={upscaledResult}
-              progress={progress}
-              statusMessage={statusMsg}
-              handleResetImage={handleResetImage}
-              handleDownload={handleDownload}
-            />
+            <ErrorBoundary key="image-studio" onReset={handleResetImage}>
+              <ImageStudio
+                currentImage={currentImage}
+                handleImageSelected={handleImageSelected}
+                settings={settings}
+                setSettings={setSettings}
+                triggerUpscale={triggerUpscale}
+                isProcessing={isProcessing}
+                currentImgElem={currentImgElem}
+                upscaledResult={upscaledResult}
+                progress={progress}
+                statusMessage={statusMsg}
+                handleResetImage={handleResetImage}
+                handleDownload={handleDownload}
+              />
+            </ErrorBoundary>
           )}
         </main>
 

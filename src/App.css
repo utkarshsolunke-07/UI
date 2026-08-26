@@ -329,6 +329,7 @@
     0 24px 50px rgba(0, 0, 0, 0.75), 
     0 0 35px rgba(var(--primary-rgb), 0.3),
     inset 0 0 15px rgba(var(--primary-rgb), 0.15);
+  will-change: transform, box-shadow;
 }
 
 .panel-header, .card-header {

@@ -126,14 +126,34 @@ export default function VideoStudio({ settings, setSettings }) {
     }
   }, [isSample]);
 
+  const activeBlobUrlRef = useRef(null);
+
+  /* Clean up ObjectURL on unmount */
+  useEffect(() => {
+    return () => {
+      if (activeBlobUrlRef.current) {
+        URL.revokeObjectURL(activeBlobUrlRef.current);
+        activeBlobUrlRef.current = null;
+      }
+    };
+  }, []);
+
   /* Handle uploaded video */
   const handleFile = (file) => {
     if (!file?.type.startsWith('video/')) return alert('Please upload a valid video file (MP4, WebM, MOV).');
     sampleRef.current?.stop();
     sampleRef.current = null;
+
+    if (activeBlobUrlRef.current) {
+      URL.revokeObjectURL(activeBlobUrlRef.current);
+    }
+
+    const newUrl = URL.createObjectURL(file);
+    activeBlobUrlRef.current = newUrl;
+
     setIsSample(false);
     setVideoName(file.name);
-    setVideoSrc(URL.createObjectURL(file));
+    setVideoSrc(newUrl);
     setExportedUrl(null);
     setIsPlaying(true);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -159,12 +179,19 @@ export default function VideoStudio({ settings, setSettings }) {
   const resetToSample = () => {
     sampleRef.current?.stop();
     sampleRef.current = generateSampleVideoCanvas();
+
+    if (activeBlobUrlRef.current) {
+      URL.revokeObjectURL(activeBlobUrlRef.current);
+      activeBlobUrlRef.current = null;
+    }
+
     setIsSample(true);
     setVideoName('Sample_Video_480p.webm');
     setExportedUrl(null);
     setVideoSrc('sample');
     setIsPlaying(true);
   };
+
 
   /* Synchronized High-Definition Real-time AI Render Loop */
   useWebglRenderLoop({

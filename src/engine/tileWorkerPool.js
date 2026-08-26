@@ -198,8 +198,30 @@ export class TileWorkerPool {
   }
 
   _onWorkerError(workerIdx, e) {
-    console.error(`[TilePool] Worker ${workerIdx} error:`, e);
-    this._ready.push(workerIdx);
+    console.error(`[TilePool] Worker ${workerIdx} crashed or encountered an error. Respawning worker thread:`, e);
+
+    // Terminate old crashed worker
+    try {
+      this._workers[workerIdx]?.terminate();
+    } catch (_) {}
+
+    // Respawn fresh worker thread in place
+    try {
+      const freshWorker = new Worker(new URL('./tileProcessorWorker.js', import.meta.url), { type: 'module' });
+      freshWorker.onmessage = (msg) => this._onWorkerMessage(workerIdx, msg);
+      freshWorker.onerror   = (err) => this._onWorkerError(workerIdx, err);
+      this._workers[workerIdx] = freshWorker;
+      this._ready.push(workerIdx);
+    } catch (respawnErr) {
+      console.warn(`[TilePool] Failed to respawn worker ${workerIdx}:`, respawnErr);
+    }
+
+    // Process next task if queued
+    if (this._queue.length > 0 && this._ready.length > 0) {
+      const next = this._queue.shift();
+      const nextWorker = this._ready.pop();
+      this._runTask(nextWorker, next);
+    }
   }
 
   /**
