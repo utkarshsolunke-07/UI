@@ -28,7 +28,7 @@ export default function App() {
     scale: null, model: 'utkarsh_omni_absolute', aiUpscale: true, hardwareStrategy: 'auto',
     sharpness: 70, denoise: 30, hdr: 40,
     clarity: 65, faceRestore: 65, clahe: 40,
-    grain: 0, chroma: 20, bloom: 25, format: 'png', fps: 'original', lut: 'none', temp: 0,
+    grain: 0, chroma: 0, bloom: 0, format: 'png', fps: 'original', lut: 'none', temp: 0,
     targetWidth: null, targetHeight: 2160,
   });
 

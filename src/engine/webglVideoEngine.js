@@ -664,52 +664,46 @@ export class WebGLVideoEngine {
           c = pow(max(c, vec3(0.0)), vec3(0.94)) * 1.08;
         }
 
-        // ── 6. Master Three-Point Lighting Engine ──
-        // Calculates synthetic surface normal gradients for Key, Fill & Rim lighting
+        // ── 6. Ultra-Clean Micro-Contrast & Surface Normal Refinement ──
         vec2 dStep = 1.0 / u_dstSize;
         float lRight = luma(texture(u_sharpened, clamp(uv + vec2(dStep.x, 0.0), vec2(0.0), vec2(1.0))).rgb);
         float lLeft  = luma(texture(u_sharpened, clamp(uv - vec2(dStep.x, 0.0), vec2(0.0), vec2(1.0))).rgb);
         float lTop   = luma(texture(u_sharpened, clamp(uv - vec2(0.0, dStep.y), vec2(0.0), vec2(1.0))).rgb);
         float lBot   = luma(texture(u_sharpened, clamp(uv + vec2(0.0, dStep.y), vec2(0.0), vec2(1.0))).rgb);
 
-        vec3 norm = normalize(vec3(lLeft - lRight, lTop - lBot, 0.18));
+        vec3 norm = normalize(vec3(lLeft - lRight, lTop - lBot, 0.25));
 
-        // Key Light (Top-Right Warm Directional Highlight)
+        // Subtle, neutral micro-lighting for edge depth (no artificial colour shift)
         vec3 keyDir = normalize(vec3(0.5, -0.6, 0.6));
         float keyIntensity = max(0.0, dot(norm, keyDir));
-        vec3 keyLight = vec3(1.05, 0.96, 0.85) * keyIntensity * 0.18;
+        vec3 neutralLight = vec3(1.0) * keyIntensity * 0.03;
 
-        // Fill Light (Bottom-Left Cool Ambient Shadow Lift)
-        vec3 fillDir = normalize(vec3(-0.5, 0.5, 0.4));
-        float fillIntensity = max(0.0, dot(norm, fillDir));
-        vec3 fillLight = vec3(0.25, 0.45, 0.75) * fillIntensity * 0.12;
+        c += neutralLight;
 
-        // Back Light / Rim Light (Edge Separation Contour)
-        float rimFactor = pow(1.0 - max(0.0, dot(norm, vec3(0.0, 0.0, 1.0))), 3.5);
-        vec3 rimLight = vec3(0.0, 0.85, 1.0) * rimFactor * 0.22;
-
-        c += (keyLight + fillLight + rimLight);
-
-        // ── 7. Master Composition & Vignette Framing ──
+        // ── 7. Natural Vignette Framing ──
         float distFromCenter = length(uv - 0.5);
-        float vignette = smoothstep(0.85, 0.35, distFromCenter * 1.12);
-        c *= mix(0.72, 1.0, vignette);
+        float vignette = smoothstep(0.95, 0.45, distFromCenter * 1.05);
+        c *= mix(0.90, 1.0, vignette);
 
         // ── 8. Bloom Additive Blend ──
-        vec3 bloomCol = bloom(uv, u_bloom);
-        c += bloomCol;
+        if (u_bloom > 0.001) {
+          vec3 bloomCol = bloom(uv, u_bloom);
+          c += bloomCol;
+        }
 
         // ── 9. Film Grain (luminance-masked, temporally animated) ──
-        float grainStrength = (u_grain / 10.0) * 0.044;
-        float noise = (hash(v_uv * 1800.0 + u_time * 0.013) - 0.5) * grainStrength;
-        float grainMask = 1.0 - abs(luma(c) - 0.5) * 1.5;
-        c += noise * max(grainMask, 0.0);
+        if (u_grain > 0.001) {
+          float grainStrength = (u_grain / 10.0) * 0.044;
+          float noise = (hash(v_uv * 1800.0 + u_time * 0.013) - 0.5) * grainStrength;
+          float grainMask = 1.0 - abs(luma(c) - 0.5) * 1.5;
+          c += noise * max(grainMask, 0.0);
+        }
 
         fragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
       }`;
     }
 
-    // WebGL 1 Fallback Shader (includes Cinematic Grade & 3-Point Lighting)
+    // WebGL 1 Fallback Shader (Clean, Accurate Super-Resolution)
     return `
     precision highp float;
     varying vec2 v_uv;
@@ -726,48 +720,16 @@ export class WebGLVideoEngine {
       float lum = luma(c);
 
       float hdrStrength = u_hdr / 100.0;
-      c = mix(vec3(lum), c, 1.0 + hdrStrength * 0.45);
+      c = mix(vec3(lum), c, 1.0 + hdrStrength * 0.25);
       
-      // Basic ACES
+      // Clean ACES tone mapping without artificial colour tinting
       c = clamp((c * (2.51 * c + 0.03)) / (c * (2.43 * c + 0.59) + 0.14), 0.0, 1.0);
-      c = mix(col.rgb, c, hdrStrength * 0.55);
+      c = mix(col.rgb, c, hdrStrength * 0.35);
 
       // Temperature
       float tNorm = u_temp / 50.0;
-      c.r += tNorm * 0.08;
-      c.b -= tNorm * 0.08;
-
-      // Cinematic Master Grade
-      c = mix(vec3(lum), c, 1.25);
-      c.r = clamp((c.r - 0.05) * 1.15, 0.0, 1.0);
-      c.b = clamp(c.b * 1.2 + 0.05, 0.0, 1.0);
-      c.g = clamp(c.g * 1.08, 0.0, 1.0);
-      c *= vec3(0.9, 0.95, 1.1);
-      
-      // 3-Point Lighting Engine
-      vec2 dStep = vec2(0.001, 0.001); // Approx
-      float lRight = luma(texture2D(u_sharpened, clamp(uv + vec2(dStep.x, 0.0), vec2(0.0), vec2(1.0))).rgb);
-      float lLeft  = luma(texture2D(u_sharpened, clamp(uv - vec2(dStep.x, 0.0), vec2(0.0), vec2(1.0))).rgb);
-      float lTop   = luma(texture2D(u_sharpened, clamp(uv - vec2(0.0, dStep.y), vec2(0.0), vec2(1.0))).rgb);
-      float lBot   = luma(texture2D(u_sharpened, clamp(uv + vec2(0.0, dStep.y), vec2(0.0), vec2(1.0))).rgb);
-
-      vec3 norm = normalize(vec3(lLeft - lRight, lTop - lBot, 0.18));
-
-      vec3 keyDir = normalize(vec3(0.5, -0.6, 0.6));
-      vec3 keyLight = vec3(1.05, 0.96, 0.85) * max(0.0, dot(norm, keyDir)) * 0.18;
-      
-      vec3 fillDir = normalize(vec3(-0.5, 0.5, 0.4));
-      vec3 fillLight = vec3(0.25, 0.45, 0.75) * max(0.0, dot(norm, fillDir)) * 0.12;
-      
-      float rimFactor = pow(1.0 - max(0.0, dot(norm, vec3(0.0, 0.0, 1.0))), 3.5);
-      vec3 rimLight = vec3(0.0, 0.85, 1.0) * rimFactor * 0.22;
-      
-      c += (keyLight + fillLight + rimLight);
-
-      // Vignette
-      float distFromCenter = length(uv - 0.5);
-      float vignette = smoothstep(0.85, 0.35, distFromCenter * 1.12);
-      c *= mix(0.72, 1.0, vignette);
+      c.r += tNorm * 0.05;
+      c.b -= tNorm * 0.05;
 
       gl_FragColor = vec4(clamp(c, 0.0, 1.0), col.a);
     }`;
@@ -1248,8 +1210,8 @@ export class WebGLVideoEngine {
     if (this.locColor.grain)   gl.uniform1f(this.locColor.grain,   settings.grain ?? 2);
     if (this.locColor.lutMode) gl.uniform1i(this.locColor.lutMode, lutMode);
     if (this.locColor.time)    gl.uniform1f(this.locColor.time,    now);
-    if (this.locColor.chroma)  gl.uniform1f(this.locColor.chroma,  (settings.chroma ?? 20) / 100);
-    if (this.locColor.bloom)   gl.uniform1f(this.locColor.bloom,   (settings.bloom  ?? 25) / 100);
+    if (this.locColor.chroma)  gl.uniform1f(this.locColor.chroma,  (settings.chroma ?? 0) / 100);
+    if (this.locColor.bloom)   gl.uniform1f(this.locColor.bloom,   (settings.bloom  ?? 0) / 100);
     if (this.locColor.dstSize) gl.uniform2f(this.locColor.dstSize, dstW, dstH);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
