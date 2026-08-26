@@ -4,9 +4,11 @@ import { getGeminiApiKey, setGeminiApiKey } from '../engine/geminiAiEngine';
 const THEMES = [
   { value: 'obsidian',  label: '🌊 Obsidian Cyan' },
   { value: 'cyberpunk', label: '⚡ Cyberpunk Amber' },
+  { value: 'aurora',    label: '🌌 Aurora Borealis' },
   { value: 'emerald',   label: '💚 Emerald Mint' },
   { value: 'synthwave', label: '🌸 Neon Synthwave' },
 ];
+
 
 const NAV_ITEMS = [
   { id: 'video', label: '🎥 VIDEO AI STUDIO' },

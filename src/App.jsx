@@ -9,9 +9,12 @@ import { prewarmOfflineEngine } from './engine/offlineExportEngine';
 import { useLocalStorage } from './utils/useLocalStorage';
 import './App.css';
 
+import NeuralParticleCanvas from './components/NeuralParticleCanvas';
+
 export default function App() {
   const [activeTab, setActiveTab]     = useState('video');
   const [activeTheme, setActiveTheme] = useState('cyberpunk');
+
 
   /* Image upscaling state */
   const [currentImage, setCurrentImage]     = useState(null);
@@ -126,8 +129,12 @@ export default function App() {
 
   return (
     <>
+      {/* 60 FPS Interactive Neural Particle Canvas */}
+      <NeuralParticleCanvas />
+
       {/* Interactive Mouse Spotlight Radial Glow */}
       <div className="mouse-spotlight" aria-hidden="true" />
+
 
       {/* Cyber CRT Scanline Shader Overlay */}
       <div className="cyber-scanlines" aria-hidden="true" />

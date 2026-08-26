@@ -96,6 +96,24 @@ body[data-theme="synthwave"] {
   --text-dim:       #6b21a8;
 }
 
+body[data-theme="aurora"] {
+  --primary:        #00ffd5;
+  --primary-rgb:    0, 255, 213;
+  --secondary:      #9d4edd;
+  --secondary-rgb:  157, 78, 221;
+  --accent:         #7000ff;
+  --bg-base:        #032b30;
+  --bg-card:        rgba(5, 50, 56, 0.65);
+  --bg-panel:       rgba(3, 40, 45, 0.90);
+  --bg-header:      rgba(2, 30, 34, 0.95);
+  --border:         rgba(0, 255, 213, 0.22);
+  --border-glow:    rgba(0, 255, 213, 0.5);
+  --text:           #f0fdfa;
+  --text-muted:     #99f6e4;
+  --text-dim:       #115e59;
+}
+
+
 body {
   font-family: var(--font-main);
   background-color: var(--bg-base);
