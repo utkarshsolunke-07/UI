@@ -219,13 +219,14 @@ export class WebGLVideoEngine {
         float dD1 = abs(dot(cNE.rgb, vec3(0.333)) - dot(cSW.rgb, vec3(0.333)));
         float dD2 = abs(dot(cNW.rgb, vec3(0.333)) - dot(cSE.rgb, vec3(0.333)));
 
-        float edgeStrength = clamp((dH + dV + dD1 + dD2) * 6.0, 0.0, 1.0);
+        float edgeStrength = clamp((dH + dV + dD1 + dD2) * 10.0, 0.0, 1.0); // Boosted edge detection
 
-        // Sub-pixel residual reconstruction (synthesizes new details at high scale)
-        vec4 subpixelResidual = cC + (cC * 4.0 - (cN + cS + cE + cW)) * (0.8 + edgeStrength * 1.2);
-        subpixelResidual = clamp(subpixelResidual, vMin * 0.92, vMax * 1.08);
+        // Sub-pixel residual reconstruction (synthesizes new details aggressively at high scale)
+        vec4 subpixelResidual = cC + (cC * 4.0 - (cN + cS + cE + cW)) * (1.2 + edgeStrength * 2.5);
+        subpixelResidual = clamp(subpixelResidual, vMin * 0.88, vMax * 1.12);
 
-        fragColor = clamp(mix(col, subpixelResidual, 0.45 + edgeStrength * 0.45), 0.0, 1.0);
+        // Extreme AI Upscale Blend
+        fragColor = clamp(mix(col, subpixelResidual, 0.60 + edgeStrength * 0.40), 0.0, 1.0);
       }`;
     }
 
@@ -245,7 +246,7 @@ export class WebGLVideoEngine {
       vec4 cE = texture2D(u_src, v_uv + vec2( rcpSrc.x, 0.0));
       vec4 cW = texture2D(u_src, v_uv + vec2(-rcpSrc.x, 0.0));
       vec4 laplacian = cC - (cN + cS + cE + cW) * 0.25;
-      gl_FragColor = clamp(cC + laplacian * 1.2, 0.0, 1.0);
+      gl_FragColor = clamp(cC + laplacian * 2.2, 0.0, 1.0); // Aggressive sharpening for WebGL1 fallback
     }`;
   }
 
@@ -456,7 +457,8 @@ export class WebGLVideoEngine {
 
         vec4 rcpContrast = vec4(1.0) / max(vMax - vMin, vec4(0.0001));
         
-        float sharpAmt = clamp(u_sharpness * 0.8 + u_clarity * 0.6, 0.1, 2.5);
+        // Massive RCAS multiplier for jaw-dropping visual clarity
+        float sharpAmt = clamp((u_sharpness * 2.5 + u_clarity * 1.8), 0.2, 4.5);
         
         // Model-specific profile tweaks
         if (u_modelMode == 1) { // Real-ESRGAN x4+ (Photorealistic graphics)
@@ -500,7 +502,8 @@ export class WebGLVideoEngine {
       vec4 cS = texture2D(u_upscaled, v_uv + vec2( 0.0,        rcpDst.y));
 
       vec4 laplacian = cC - (cN + cW + cE + cS) * 0.25;
-      float mult = (u_sharpness * 1.5 + u_clarity * 1.0) * 0.5; // Reduced intensity for WebGL1 fallback to avoid halos
+      // High-impact sharpening for WebGL1
+      float mult = (u_sharpness * 3.5 + u_clarity * 2.0) * 0.8; 
       gl_FragColor = clamp(cC + laplacian * mult, 0.0, 1.0);
     }`;
   }
@@ -660,8 +663,10 @@ export class WebGLVideoEngine {
           c.b = pow(max(c.b, 0.0), 0.74) * 1.40;
           c = mix(c, vibrance(c, 1.4), 0.65); // High-vibrance kinetic punch
         } else {
-          // Default Master Grade: Subtle S-curve + High Dynamic Micro-Contrast
-          c = pow(max(c, vec3(0.0)), vec3(0.94)) * 1.08;
+          // EXTREME AI UPSCALE DEFAULT GRADE
+          // Radically boosts micro-contrast, lifts shadows, and enhances vibrance for an undeniable "Enhanced" look
+          c = pow(max(c, vec3(0.0)), vec3(0.82)) * 1.18; // Aggressive S-Curve contrast
+          c = mix(c, vibrance(c, 1.4), 0.5);             // Major color pop!
         }
 
         // ── 6. Ultra-Clean Micro-Contrast & Surface Normal Refinement ──
@@ -720,11 +725,11 @@ export class WebGLVideoEngine {
       float lum = luma(c);
 
       float hdrStrength = u_hdr / 100.0;
-      c = mix(vec3(lum), c, 1.0 + hdrStrength * 0.25);
+      c = mix(vec3(lum), c, 1.0 + hdrStrength * 0.85); // Boosted HDR saturation for WebGL1
       
       // Clean ACES tone mapping without artificial colour tinting
       c = clamp((c * (2.51 * c + 0.03)) / (c * (2.43 * c + 0.59) + 0.14), 0.0, 1.0);
-      c = mix(col.rgb, c, hdrStrength * 0.35);
+      c = mix(col.rgb, c, hdrStrength * 0.65 + 0.2); // Aggressive contrast lift
 
       // Temperature
       float tNorm = u_temp / 50.0;
