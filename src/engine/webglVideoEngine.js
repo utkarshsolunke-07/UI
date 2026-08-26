@@ -709,7 +709,7 @@ export class WebGLVideoEngine {
       }`;
     }
 
-    // WebGL 1 Fallback Shader (no bloom / CA — too expensive on WebGL1)
+    // WebGL 1 Fallback Shader (includes Cinematic Grade & 3-Point Lighting)
     return `
     precision highp float;
     varying vec2 v_uv;
@@ -717,20 +717,57 @@ export class WebGLVideoEngine {
     uniform float u_hdr;
     uniform float u_temp;
 
+    float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+
     void main() {
-      vec4 col = texture2D(u_sharpened, v_uv);
+      vec2 uv = v_uv;
+      vec4 col = texture2D(u_sharpened, uv);
       vec3 c = col.rgb;
-      float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      float lum = luma(c);
 
       float hdrStrength = u_hdr / 100.0;
       c = mix(vec3(lum), c, 1.0 + hdrStrength * 0.45);
-      // Simple ACES approximation
+      
+      // Basic ACES
       c = clamp((c * (2.51 * c + 0.03)) / (c * (2.43 * c + 0.59) + 0.14), 0.0, 1.0);
       c = mix(col.rgb, c, hdrStrength * 0.55);
 
+      // Temperature
       float tNorm = u_temp / 50.0;
       c.r += tNorm * 0.08;
       c.b -= tNorm * 0.08;
+
+      // Cinematic Master Grade
+      c = mix(vec3(lum), c, 1.25);
+      c.r = clamp((c.r - 0.05) * 1.15, 0.0, 1.0);
+      c.b = clamp(c.b * 1.2 + 0.05, 0.0, 1.0);
+      c.g = clamp(c.g * 1.08, 0.0, 1.0);
+      c *= vec3(0.9, 0.95, 1.1);
+      
+      // 3-Point Lighting Engine
+      vec2 dStep = vec2(0.001, 0.001); // Approx
+      float lRight = luma(texture2D(u_sharpened, clamp(uv + vec2(dStep.x, 0.0), vec2(0.0), vec2(1.0))).rgb);
+      float lLeft  = luma(texture2D(u_sharpened, clamp(uv - vec2(dStep.x, 0.0), vec2(0.0), vec2(1.0))).rgb);
+      float lTop   = luma(texture2D(u_sharpened, clamp(uv - vec2(0.0, dStep.y), vec2(0.0), vec2(1.0))).rgb);
+      float lBot   = luma(texture2D(u_sharpened, clamp(uv + vec2(0.0, dStep.y), vec2(0.0), vec2(1.0))).rgb);
+
+      vec3 norm = normalize(vec3(lLeft - lRight, lTop - lBot, 0.18));
+
+      vec3 keyDir = normalize(vec3(0.5, -0.6, 0.6));
+      vec3 keyLight = vec3(1.05, 0.96, 0.85) * max(0.0, dot(norm, keyDir)) * 0.18;
+      
+      vec3 fillDir = normalize(vec3(-0.5, 0.5, 0.4));
+      vec3 fillLight = vec3(0.25, 0.45, 0.75) * max(0.0, dot(norm, fillDir)) * 0.12;
+      
+      float rimFactor = pow(1.0 - max(0.0, dot(norm, vec3(0.0, 0.0, 1.0))), 3.5);
+      vec3 rimLight = vec3(0.0, 0.85, 1.0) * rimFactor * 0.22;
+      
+      c += (keyLight + fillLight + rimLight);
+
+      // Vignette
+      float distFromCenter = length(uv - 0.5);
+      float vignette = smoothstep(0.85, 0.35, distFromCenter * 1.12);
+      c *= mix(0.72, 1.0, vignette);
 
       gl_FragColor = vec4(clamp(c, 0.0, 1.0), col.a);
     }`;
@@ -1262,6 +1299,17 @@ export class WebGLVideoEngine {
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, writeHistFBO);
       gl.blitFramebuffer(0, 0, dstW, dstH, 0, 0, dstW, dstH, gl.COLOR_BUFFER_BIT, gl.NEAREST);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } else if (!this.isWebGL2) {
+      // WebGL 1 Fallback: Ensure the final processed texture is actually drawn to the default framebuffer (canvas)
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, dstW, dstH);
+      gl.useProgram(this.progEASU); // Use basic passthrough shader to blit to canvas
+      this._bindAttributes(this.progEASU);
+      
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, taaInputTex);
+      gl.uniform1i(this.locEASU.src, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
 
     this._frameIndex++;
