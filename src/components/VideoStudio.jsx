@@ -205,6 +205,24 @@ export default function VideoStudio({ settings, setSettings }) {
     webglEngineRef
   });
 
+  /* Keyboard Shortcuts (Space = Play/Pause, M = Mute) */
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Don't trigger if user is typing in an input or textarea
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        togglePlay();
+      } else if (e.code === 'KeyM') {
+        e.preventDefault();
+        setIsMuted(m => !m);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPlaying, isSample]);
+
+
   /* Video Controls */
   const togglePlay = () => {
     if (isSample) {
