@@ -67,10 +67,9 @@ class AIUpscalerEngine:
         Memory-Efficient Overlapping Tile Processor.
         Prevents Out-Of-Memory (OOM) errors on high-resolution targets.
         """
-        h, w, c = img_np.shape
-        dst_h, dst_w = h * scale, w * scale
-        output = np.zeros((dst_h, dst_w, c), dtype=np.float32)
-        weight_map = np.zeros((dst_h, dst_w, c), dtype=np.float32)
+        # Dynamic VRAM-aware tile sizing: adjust tile size based on target scale and device capability
+        if tile_size == 512 and (w >= 1920 or h >= 1080):
+            tile_size = 1024 if self.device.type == "cuda" else 512
 
         tiles_x = math.ceil(w / tile_size)
         tiles_y = math.ceil(h / tile_size)
