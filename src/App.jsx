@@ -33,13 +33,22 @@ export default function App() {
     document.body.setAttribute('data-theme', activeTheme);
   }, [activeTheme]);
 
-  /* Interactive Mouse Spotlight Tracking */
+  /* Interactive Mouse Spotlight Tracking with rAF throttling */
   useEffect(() => {
+    let ticking = false;
     const handlePointerMove = (e) => {
-      document.documentElement.style.setProperty('--mouse-x', `${e.clientX}px`);
-      document.documentElement.style.setProperty('--mouse-y', `${e.clientY}px`);
+      if (!ticking) {
+        const x = e.clientX;
+        const y = e.clientY;
+        requestAnimationFrame(() => {
+          document.documentElement.style.setProperty('--mouse-x', `${x}px`);
+          document.documentElement.style.setProperty('--mouse-y', `${y}px`);
+          ticking = false;
+        });
+        ticking = true;
+      }
     };
-    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointermove', handlePointerMove, { passive: true });
     return () => window.removeEventListener('pointermove', handlePointerMove);
   }, []);
 

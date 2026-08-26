@@ -21,7 +21,8 @@
   );
   pointer-events: none;
   z-index: 1;
-  transition: background 0.05s ease;
+  transform: translateZ(0);
+  will-change: background;
 }
 
 /* Background Mesh & Orbs */

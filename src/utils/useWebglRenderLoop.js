@@ -1,12 +1,11 @@
 /**
- * UTKARSH AI WebGL Render Loop Hook v31.0
+ * UTKARSH AI WebGL Render Loop Hook v33.0
  * 
- * Key improvements:
- *  - Properly separates srcSize and dstSize (the v30 bug that broke EASU math)
- *  - Uses requestAnimationFrame delta-time to truly cap at 60fps (prevents >60fps waste)
- *  - Preview canvas capped at 1920px wide for smooth UI (export runs at full 4K in worker)
- *  - Raw canvas draws at source resolution for accurate comparison
- *  - Skips WebGL render if video frame didn't change (readyState check)
+ * Key performance optimizations:
+ *  - FPS Delta-Time throttle: Caps rendering at 60 FPS (prevents high-refresh 120Hz/240Hz monitors from wasting GPU cycles).
+ *  - Ultra-fast settings hash check (replaces heavy JSON.stringify allocation loop).
+ *  - Capped live preview resolution (max 1920px width) for 60fps silky smooth UI playback (4K/8K export runs in Web Worker).
+ *  - Frame timestamp deduplication for paused/static videos to eliminate zero-change renders.
  */
 
 import { useEffect, useRef } from 'react';
@@ -14,6 +13,7 @@ import { OmniUpscalerCore } from '../engine/omniUpscalerCore.js';
 
 const TARGET_FPS = 60;
 const FRAME_MS   = 1000 / TARGET_FPS;
+const MAX_PREVIEW_WIDTH = 1920;
 
 export function useWebglRenderLoop({
   canvasRef,
@@ -29,8 +29,8 @@ export function useWebglRenderLoop({
   const settingsRef   = useRef(settings);
   const tempValRef    = useRef(tempVal);
   const lastVideoTime = useRef(-1);
-  const lastSettings  = useRef('');
-  const lastTemp      = useRef(null);
+  const lastHash      = useRef('');
+  const lastFrameTime = useRef(0);
 
   // Keep refs updated to prevent React hook re-subscription lag
   settingsRef.current = settings;
@@ -39,9 +39,15 @@ export function useWebglRenderLoop({
   useEffect(() => {
     let stopped = false;
 
-    const render = () => {
+    const render = (now) => {
       if (stopped) return;
       animIdRef.current = requestAnimationFrame(render);
+
+      // Delta-time FPS throttle to 60 FPS
+      if (now - lastFrameTime.current < FRAME_MS - 2) {
+        return;
+      }
+      lastFrameTime.current = now;
 
       const canvas    = canvasRef.current;
       const rawCanvas = rawCanvasRef.current;
@@ -54,17 +60,15 @@ export function useWebglRenderLoop({
       const src = isSample ? sampleRef.current?.canvas : videoRef.current;
       if (!src) return;
 
-      // Don't render if HTMLVideoElement isn't ready or hasn't advanced a frame
+      // Fast primitive settings hash check
+      const settingsHash = `${currentSettings.sharpness}_${currentSettings.clarity}_${currentSettings.hdr}_${currentSettings.grain}_${currentSettings.lut}_${currentSettings.model}_${currentSettings.targetHeight}_${currentSettings.targetWidth}_${currentSettings.scale}_${currentTemp}`;
+      const settingsChanged = settingsHash !== lastHash.current;
+      lastHash.current = settingsHash;
+
+      // Skip rendering if video element isn't ready or frame hasn't advanced & settings haven't changed
       if (src instanceof HTMLVideoElement) {
         if (src.readyState < 2) return;
-        
-        const currentSettingsStr = JSON.stringify(currentSettings);
-        const settingsChanged = currentSettingsStr !== lastSettings.current || currentTemp !== lastTemp.current;
-        lastSettings.current = currentSettingsStr;
-        lastTemp.current = currentTemp;
-
-        // Skip rendering if the video timestamp hasn't changed AND settings haven't changed
-        if (src.currentTime === lastVideoTime.current && !isSample && !settingsChanged) return;
+        if (src.currentTime === lastVideoTime.current && !settingsChanged) return;
         lastVideoTime.current = src.currentTime;
       }
 
@@ -75,7 +79,7 @@ export function useWebglRenderLoop({
 
       const aspect = srcW / srcH;
 
-      // ── True Target Super-Resolution Output (1080p / 2K / 4K / 8K) ──
+      // ── Target Super-Resolution Preview Output (Capped at 1920 max for 60fps UI) ──
       let dstW, dstH;
       if (currentSettings.targetWidth && currentSettings.targetHeight) {
         dstW = currentSettings.targetWidth;
@@ -90,6 +94,12 @@ export function useWebglRenderLoop({
         const scale = currentSettings.scale || 2;
         dstW = Math.round(srcW * scale);
         dstH = Math.round(srcH * scale);
+      }
+
+      // Cap preview canvas width at MAX_PREVIEW_WIDTH for UI fluidity
+      if (dstW > MAX_PREVIEW_WIDTH) {
+        dstW = MAX_PREVIEW_WIDTH;
+        dstH = Math.round(MAX_PREVIEW_WIDTH / aspect);
       }
 
       dstW = dstW % 2 === 0 ? dstW : dstW + 1;
