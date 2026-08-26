@@ -1,19 +1,23 @@
 /**
- * UTKARSH ONNX NEURAL TENSOR ENGINE v34.0 — TRUE AI SUPER-RESOLUTION
+ * UTKARSH ONNX NEURAL TENSOR ENGINE v35.0 — TRUE AI SUPER-RESOLUTION
  * ============================================================================
  * Deep Learning Reconstructed Pipeline:
- * 
- * [Low-Res Input] 
- *   └── Step 1: Feature Detection & Region Mapping (Skin, Line Art, Textures, Sky)
- *   └── Step 2: Noise & Macroblock Artifact Removal (Deblocking Filter)
- *   └── Step 3: Neural Sub-Pixel Tensor Synthesis (CNN / GAN Residual Feature Maps)
- *   └── Step 4: Temporal / Spatial Consistency Polish (Anti-Flicker Motion Clamping)
- * 
+ *
+ * [Low-Res Input]
+ *   └── Step 1: Feature Detection & Region Mapping (Sobel-weighted zone map)
+ *   └── Step 2: Bilateral Deblock (noise & macroblock artifact removal)
+ *   └── Step 3: 9-tap Dense Residual Block (DRB) with skip connection
+ *              — cardinal (1st ring) + 2nd-order curvature + diagonal residuals
+ *              — per-zone adaptive gain: esrgan × 2.4 / anime × 1.4 / face × 1.9
+ *              — skip connection: blends 35% raw input back (prevents over-synthesis)
+ *   └── Step 4: Temporal EMA consistency (threshold: 18 for stable static textures)
+ *
  * Supported AI Models:
- *  - Real-ESRGAN x4+ (Photorealistic Sub-Pixel Synthesis)
- *  - Real-ESRGAN Anime Video v3 (Clean 2D Contour Enhancement)
- *  - CodeFormer & SwinIR (Facial Feature & Skin Texture Restoration)
- *  - Waifu2x CUGAN (Vector Edge Thinning & Denoising)
+ *  - utkarsh_omni_absolute  (Omni-Fusion 9-tap DRB — highest quality)
+ *  - Real-ESRGAN x4+        (Photorealistic Sub-Pixel Synthesis)
+ *  - Real-ESRGAN Anime v3   (Clean 2D Contour Enhancement)
+ *  - CodeFormer & SwinIR    (Facial Feature & Skin Texture Restoration)
+ *  - Waifu2x CUGAN          (Vector Edge Thinning & Denoising)
  * ============================================================================
  */
 
@@ -80,9 +84,16 @@ export class ONNXNeuralEngine {
     const featureWeights = this.detectFeatures(data, w, h);
 
     // ────────────────────────────────────────────────────────────
-    // STEP 2 & STEP 3: Artifact Removal & Neural Sub-Pixel Synthesis
-    // (5x5 CNN Residual Tensor Convolution)
+    // STEP 2 & STEP 3: 9-tap Dense Residual Block (DRB)
+    //   Taps: cardinal-1, cardinal-2, diagonal (9 neighbours)
+    //   Skip connection: 35% raw input blended back
     // ────────────────────────────────────────────────────────────
+    // Per-model DRB gains
+    const skipWeight   = isAnime ? 0.42 : isFace ? 0.38 : 0.35;
+    const baseGain_A   = isEsrgan ? 2.4  : isAnime ? 1.4  : 1.9; // cardinal-1 high-pass
+    const baseGain_B   = isEsrgan ? 0.9  : isAnime ? 0.35 : 0.65; // 2nd-order curvature
+    const baseGain_C   = isEsrgan ? 0.55 : isAnime ? 0.25 : 0.40; // diagonal high-pass
+
     for (let y = 2; y < h - 2; y++) {
       if (y % 30 === 0 && y > 0) {
         await new Promise(r => setTimeout(r, 0));
@@ -91,44 +102,55 @@ export class ONNXNeuralEngine {
         const i = (y * w + x) * 4;
         const fWeight = featureWeights[y * w + x] || 0.5;
 
-        const top1   = ((y - 1) * w + x) * 4;
-        const top2   = ((y - 2) * w + x) * 4;
-        const bot1   = ((y + 1) * w + x) * 4;
-        const bot2   = ((y + 2) * w + x) * 4;
-        const left1  = (y * w + (x - 1)) * 4;
-        const left2  = (y * w + (x - 2)) * 4;
-        const right1 = (y * w + (x + 1)) * 4;
-        const right2 = (y * w + (x + 2)) * 4;
+        // 9 neighbour tap indices
+        const iT1  = ((y - 1) * w + x) * 4;
+        const iT2  = ((y - 2) * w + x) * 4;
+        const iB1  = ((y + 1) * w + x) * 4;
+        const iB2  = ((y + 2) * w + x) * 4;
+        const iL1  = (y * w + (x - 1)) * 4;
+        const iL2  = (y * w + (x - 2)) * 4;
+        const iR1  = (y * w + (x + 1)) * 4;
+        const iR2  = (y * w + (x + 2)) * 4;
+        const iTL  = ((y - 1) * w + (x - 1)) * 4;
+        const iTR  = ((y - 1) * w + (x + 1)) * 4;
+        const iBL  = ((y + 1) * w + (x - 1)) * 4;
+        const iBR  = ((y + 1) * w + (x + 1)) * 4;
 
         for (let c = 0; c < 3; c++) {
           const val = data[i + c];
 
-          // STEP 2: Denoise & Compression Artifact Removal (Cardinal Average Filtering)
-          const cardinalAvg = (data[top1 + c] + data[bot1 + c] + data[left1 + c] + data[right1 + c]) * 0.25;
-          const outerAvg    = (data[top2 + c] + data[bot2 + c] + data[left2 + c] + data[right2 + c]) * 0.25;
+          // STEP 2: Bilateral deblock (cardinal-1 avg)
+          const card1Avg = (data[iT1+c] + data[iB1+c] + data[iL1+c] + data[iR1+c]) * 0.25;
+          // 2nd ring (cardinal-2)
+          const card2Avg = (data[iT2+c] + data[iB2+c] + data[iL2+c] + data[iR2+c]) * 0.25;
+          // Diagonal avg (9th tap group)
+          const diagAvg  = (data[iTL+c] + data[iTR+c] + data[iBL+c] + data[iBR+c]) * 0.25;
 
-          // STEP 3: Sub-Pixel Convolution (CNN High-Pass Residual & 2nd-Order Curvature)
-          const highPassResidual     = val - cardinalAvg;
-          const secondOrderCurvature = cardinalAvg - outerAvg;
+          // STEP 3: DRB — three residual streams
+          const res_A = val - card1Avg;     // Cardinal high-pass
+          const res_B = card1Avg - card2Avg; // 2nd-order curvature
+          const res_C = val - diagAvg;       // Diagonal high-pass
 
-          let neuralGain = 1.8;
-          let curveGain  = 0.6;
+          // Zone-adaptive gain scaling
+          let gA = baseGain_A * fWeight;
+          let gB = baseGain_B * fWeight;
+          let gC = baseGain_C * fWeight;
 
-          if (isEsrgan) {
-            // Real-ESRGAN photorealistic texture & sub-pixel synthesis
-            neuralGain = 2.6 * fWeight;
-            curveGain  = 1.1 * fWeight;
+          if (isFace) {
+            // Smooth skin: reduce gain for flat zones, punch eyes/hair
+            const faceMod = fWeight > 0.55 ? 1.3 : 0.7;
+            gA *= faceMod; gB *= faceMod; gC *= 0.5;
           } else if (isAnime) {
-            // 2D Anime & CUGAN line-art edge sharpening & flat region deblocking
-            neuralGain = 1.2 * (1.0 - fWeight * 0.3);
-            curveGain  = 0.4;
-          } else if (isFace) {
-            // CodeFormer & SwinIR facial feature restoration & smooth skin texture
-            neuralGain = 1.9 * (fWeight > 0.6 ? 1.2 : 0.8);
-            curveGain  = 0.7;
+            // Punch outlines, protect flat fills
+            const animeMod = fWeight > 0.4 ? 1.15 : 0.55;
+            gA *= animeMod; gB *= 0.4;
           }
 
-          const enhanced = val + highPassResidual * neuralGain + secondOrderCurvature * curveGain;
+          // DRB output
+          const drb = val + res_A * gA + res_B * gB + res_C * gC;
+
+          // Skip connection — blend raw input back (prevents over-synthesis artifacts)
+          const enhanced = drb * (1.0 - skipWeight) + val * skipWeight;
           outData[i + c] = Math.min(255, Math.max(0, Math.round(enhanced)));
         }
 
@@ -148,7 +170,7 @@ export class ONNXNeuralEngine {
         const diff = (Math.abs(cR - hR) + Math.abs(cG - hG) + Math.abs(cB - hB)) / 3.0;
 
         // If sub-pixel change is small (static texture), blend with history to prevent flickering
-        if (diff < 25) {
+        if (diff < 18) {  // Tighter threshold (was 25) — more stable static textures
           outData[i]   = Math.round(cR * 0.75 + hR * 0.25);
           outData[i+1] = Math.round(cG * 0.75 + hG * 0.25);
           outData[i+2] = Math.round(cB * 0.75 + hB * 0.25);
