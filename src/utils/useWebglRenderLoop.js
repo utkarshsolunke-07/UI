@@ -32,6 +32,7 @@ export function useWebglRenderLoop({
   const lastVideoTime = useRef(-1);
   const lastHash      = useRef('');
   const lastFrameTime = useRef(0);
+  const rawCtxRef     = useRef(null);
 
   // Keep refs updated to prevent React hook re-subscription lag
   settingsRef.current = settings;
@@ -124,14 +125,19 @@ export function useWebglRenderLoop({
           }
         }
 
-        // ── 1. Draw RAW source to left canvas ──
+        // ── 1. Draw RAW source to left canvas (using cached 2d context) ──
         if (rawCanvas) {
           if (rawCanvas.width !== srcW || rawCanvas.height !== srcH) {
             rawCanvas.width  = srcW;
             rawCanvas.height = srcH;
+            rawCtxRef.current = null; // reset cached context on resize
           }
-          const ctx = rawCanvas.getContext('2d');
-          if (ctx) ctx.drawImage(src, 0, 0, srcW, srcH);
+          if (!rawCtxRef.current) {
+            rawCtxRef.current = rawCanvas.getContext('2d');
+          }
+          if (rawCtxRef.current) {
+            rawCtxRef.current.drawImage(src, 0, 0, srcW, srcH);
+          }
         }
 
         // ── 2. AI Upscale render (6-Pass WebGL Multi-Pass or Canvas2D Fallback) ──

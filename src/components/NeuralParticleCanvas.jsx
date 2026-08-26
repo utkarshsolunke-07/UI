@@ -24,19 +24,27 @@ export default function NeuralParticleCanvas() {
     };
     window.addEventListener('resize', handleResize);
 
-    // Particle nodes definition
-    const PARTICLE_COUNT = Math.min(Math.floor((width * height) / 18000), 70);
+    // Cache theme primary RGB once to prevent 60FPS getComputedStyle layout thrashing
+    let primaryRgbStr = '56, 189, 248';
+    const updatePrimaryRgb = () => {
+      const computedStyle = getComputedStyle(document.body);
+      primaryRgbStr = computedStyle.getPropertyValue('--primary-rgb').trim() || '56, 189, 248';
+    };
+    updatePrimaryRgb();
+
+    // Particle nodes definition (ultra-light node count to guarantee 0% UI lag)
+    const PARTICLE_COUNT = Math.min(Math.floor((width * height) / 28000), 35);
     const particles = [];
 
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       particles.push({
         x: Math.random() * width,
         y: Math.random() * height,
-        vx: (Math.random() - 0.5) * 0.75,
-        vy: (Math.random() - 0.5) * 0.75,
-        radius: Math.random() * 2 + 1.2,
-        baseAlpha: Math.random() * 0.4 + 0.3,
-        pulseSpeed: Math.random() * 0.03 + 0.01,
+        vx: (Math.random() - 0.5) * 0.6,
+        vy: (Math.random() - 0.5) * 0.6,
+        radius: Math.random() * 1.8 + 1.0,
+        baseAlpha: Math.random() * 0.35 + 0.25,
+        pulseSpeed: Math.random() * 0.02 + 0.01,
         pulseAngle: Math.random() * Math.PI * 2,
       });
     }
@@ -44,10 +52,6 @@ export default function NeuralParticleCanvas() {
     // Animation Loop
     const draw = () => {
       ctx.clearRect(0, 0, width, height);
-
-      // Get primary RGB string from CSS variable or default to gold/cyan
-      const computedStyle = getComputedStyle(document.body);
-      const primaryRgbStr = computedStyle.getPropertyValue('--primary-rgb').trim() || '56, 189, 248';
 
       // Update and draw particles
       for (let i = 0; i < particles.length; i++) {
@@ -63,31 +67,29 @@ export default function NeuralParticleCanvas() {
 
         // Pulse alpha
         p.pulseAngle += p.pulseSpeed;
-        const alpha = p.baseAlpha + Math.sin(p.pulseAngle) * 0.2;
+        const alpha = p.baseAlpha + Math.sin(p.pulseAngle) * 0.15;
 
-        // Draw particle node
+        // Draw particle node (No expensive shadowBlur to prevent GPU lag)
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(${primaryRgbStr}, ${Math.max(0.1, alpha)})`;
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = `rgba(${primaryRgbStr}, 0.8)`;
         ctx.fill();
-        ctx.shadowBlur = 0;
 
         // Connect nearby nodes with neural lines
         for (let j = i + 1; j < particles.length; j++) {
           const p2 = particles[j];
           const lx = p.x - p2.x;
           const ly = p.y - p2.y;
-          const lDist = Math.sqrt(lx * lx + ly * ly);
+          const lDistSq = lx * lx + ly * ly; // Use squared distance to avoid Math.sqrt CPU cost
 
-          if (lDist < 140) {
-            const lineAlpha = (1 - lDist / 140) * 0.25;
+          if (lDistSq < 14400) { // 120^2 = 14400
+            const lDist = Math.sqrt(lDistSq);
+            const lineAlpha = (1 - lDist / 120) * 0.20;
             ctx.beginPath();
             ctx.moveTo(p.x, p.y);
             ctx.lineTo(p2.x, p2.y);
             ctx.strokeStyle = `rgba(${primaryRgbStr}, ${lineAlpha})`;
-            ctx.lineWidth = 0.8;
+            ctx.lineWidth = 0.75;
             ctx.stroke();
           }
         }
