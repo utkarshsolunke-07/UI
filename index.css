@@ -1,0 +1,222 @@
+/* ============================================================
+   UTKARSH AI QUANTUM STUDIO v30.0 — Design System & Typography
+   ============================================================ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root, body[data-theme="cyberpunk"] {
+  --primary:        #fbbf24;
+  --primary-rgb:    251, 191, 36;
+  --secondary:      #f43f5e;
+  --secondary-rgb:  244, 63, 94;
+  --accent:         #38bdf8;
+  --accent-rgb:     56, 189, 248;
+  --warning:        #f59e0b;
+  --danger:         #ef4444;
+
+  --bg-base:        #0c0a09;
+  --bg-card:        rgba(28, 25, 23, 0.78);
+  --bg-panel:       rgba(20, 17, 15, 0.90);
+  --bg-header:      rgba(12, 10, 9, 0.94);
+  --bg-input:       rgba(0, 0, 0, 0.5);
+
+  --border:         rgba(251, 191, 36, 0.15);
+  --border-glow:    rgba(251, 191, 36, 0.4);
+
+  --text:           #fffbeb;
+  --text-muted:     #a8a29e;
+  --text-dim:       #57534e;
+
+  --radius-sm:      8px;
+  --radius-md:      12px;
+  --radius-lg:      18px;
+  --radius-xl:      24px;
+
+  --shadow-card:    0 8px 32px rgba(0, 0, 0, 0.55);
+  --shadow-glow:    0 0 35px rgba(251, 191, 36, 0.25);
+
+  /* High-Impact AAA Master Typography System */
+  --font-title:     'Syne', 'Space Grotesk', sans-serif;
+  --font-main:      'Outfit', 'Sora', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono:      'JetBrains Mono', 'Space Mono', monospace;
+}
+
+body[data-theme="obsidian"] {
+  --primary:        #38bdf8;
+  --primary-rgb:    56, 189, 248;
+  --secondary:      #a855f7;
+  --secondary-rgb:  168, 85, 247;
+  --accent:         #10b981;
+  --bg-base:        #030712;
+  --bg-card:        rgba(15, 23, 42, 0.75);
+  --bg-panel:       rgba(11, 17, 32, 0.90);
+  --bg-header:      rgba(3, 7, 18, 0.94);
+  --border:         rgba(255, 255, 255, 0.08);
+  --border-glow:    rgba(56, 189, 248, 0.35);
+  --text:           #f8fafc;
+  --text-muted:     #94a3b8;
+  --text-dim:       #475569;
+}
+
+body[data-theme="emerald"] {
+  --primary:        #10b981;
+  --primary-rgb:    16, 185, 129;
+  --secondary:      #06b6d4;
+  --secondary-rgb:  6, 182, 212;
+  --accent:         #84cc16;
+  --bg-base:        #022c22;
+  --bg-card:        rgba(6, 78, 59, 0.55);
+  --bg-panel:       rgba(4, 47, 38, 0.85);
+  --bg-header:      rgba(2, 44, 34, 0.94);
+  --border:         rgba(16, 185, 129, 0.15);
+  --border-glow:    rgba(16, 185, 129, 0.4);
+  --text:           #ecfdf5;
+  --text-muted:     #6ee7b7;
+  --text-dim:       #047857;
+}
+
+body[data-theme="synthwave"] {
+  --primary:        #f0abfc;
+  --primary-rgb:    240, 171, 252;
+  --secondary:      #c084fc;
+  --secondary-rgb:  192, 132, 252;
+  --accent:         #38bdf8;
+  --bg-base:        #1e1b4b;
+  --bg-card:        rgba(49, 46, 129, 0.55);
+  --bg-panel:       rgba(30, 27, 75, 0.88);
+  --bg-header:      rgba(15, 23, 42, 0.94);
+  --border:         rgba(240, 171, 252, 0.18);
+  --border-glow:    rgba(240, 171, 252, 0.45);
+  --text:           #faf5ff;
+  --text-muted:     #e9d5ff;
+  --text-dim:       #6b21a8;
+}
+
+body[data-theme="aurora"] {
+  --primary:        #00ffd5;
+  --primary-rgb:    0, 255, 213;
+  --secondary:      #9d4edd;
+  --secondary-rgb:  157, 78, 221;
+  --accent:         #7000ff;
+  --bg-base:        #032b30;
+  --bg-card:        rgba(5, 50, 56, 0.65);
+  --bg-panel:       rgba(3, 40, 45, 0.90);
+  --bg-header:      rgba(2, 30, 34, 0.95);
+  --border:         rgba(0, 255, 213, 0.22);
+  --border-glow:    rgba(0, 255, 213, 0.5);
+  --text:           #f0fdfa;
+  --text-muted:     #99f6e4;
+  --text-dim:       #115e59;
+}
+
+body[data-theme="quantum"] {
+  --primary:        #eab308;
+  --primary-rgb:    234, 179, 8;
+  --secondary:      #fde047;
+  --secondary-rgb:  253, 224, 71;
+  --accent:         #ffffff;
+  --bg-base:        #0a0a0a;
+  --bg-card:        rgba(255, 255, 255, 0.03);
+  --bg-panel:       rgba(10, 10, 10, 0.85);
+  --bg-header:      rgba(0, 0, 0, 0.80);
+  --border:         rgba(255, 255, 255, 0.15);
+  --border-glow:    rgba(253, 224, 71, 0.6);
+  --text:           #ffffff;
+  --text-muted:     #d4d4d8;
+  --text-dim:       #71717a;
+}
+
+
+body {
+  font-family: var(--font-main);
+  background-color: var(--bg-base);
+  background-image: 
+    radial-gradient(rgba(var(--primary-rgb), 0.14) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.7));
+  background-size: 28px 28px, 100% 100%;
+  background-attachment: fixed;
+  color: var(--text);
+  overflow-x: hidden;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Master Display Headers */
+h1, h2, h3, h4, h5, .brand-name, .panel-title, .card-header-title {
+  font-family: var(--font-title);
+  letter-spacing: 0.02em;
+  font-weight: 800;
+  text-shadow: 0 0 15px rgba(var(--primary-rgb), 0.35);
+}
+
+/* Background Ambient Orbs & Effects */
+.glow-orb {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.28;
+  animation: floatOrb 12s ease-in-out infinite alternate;
+}
+.glow-orb-1 {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(var(--primary-rgb), 0.8), transparent 70%);
+  top: -150px;
+  right: -100px;
+}
+.glow-orb-2 {
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(var(--secondary-rgb), 0.6), transparent 70%);
+  bottom: -200px;
+  left: -150px;
+  animation-delay: -6s;
+}
+
+@keyframes floatOrb {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(30px, -40px) scale(1.08); }
+  100% { transform: translate(-20px, 30px) scale(0.95); }
+}
+
+/* Cyber CRT Scanline Overlay */
+.cyber-scanlines {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.15) 50%
+  );
+  background-size: 100% 4px;
+  pointer-events: none;
+  z-index: 999;
+  opacity: 0.35;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-base);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(var(--primary-rgb), 0.35);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--primary-rgb), 0.65);
+}
+
+::selection {
+  background: rgba(var(--primary-rgb), 0.35);
+  color: #ffffff;
+}
