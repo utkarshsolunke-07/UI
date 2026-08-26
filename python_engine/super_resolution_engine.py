@@ -124,8 +124,14 @@ class AIUpscalerEngine:
         # 1. Overlapping Tile Upscale Pass
         upscaled = self.process_tiles(img, scale=scale)
 
-        # 2. Post-Processing Contrast-Adaptive Sharpening Pass
-        sharpened = self.rcas_sharpen(upscaled, sharpness=0.45)
+        # 2. Post-Processing Contrast-Adaptive Sharpening Pass (adapted per content category)
+        sharpness_map = {
+            "anime": 0.35,
+            "high_detail_photo": 0.55,
+            "general_photo": 0.45
+        }
+        sharpness = sharpness_map.get(category, 0.45)
+        sharpened = self.rcas_sharpen(upscaled, sharpness=sharpness)
 
         cv2.imwrite(output_path, sharpened)
         print(f"[Utkarsh AI] Successfully saved output to {output_path}")
