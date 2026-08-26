@@ -538,7 +538,8 @@ export class WebGLVideoEngine {
       // Dual-ACES: filmic S-curve (dark lift) + Reinhard peak clamp
       vec3 aces(vec3 x) {
         // ACES approximation (Narkowicz 2015)
-        const float a = 2.51, b = 0.03, c2 = 2.43, d = 0.59, e2 = 0.14;
+        const float a = 2.51, c2 = 2.43;
+        vec3 b = vec3(0.03), d = vec3(0.59), e2 = vec3(0.14);
         vec3 acesCol = clamp((x * (a * x + b)) / (x * (c2 * x + d) + e2), 0.0, 1.0);
         // Reinhard on luminance channel only — prevents colour shift at peaks
         float lumX = luma(x);
@@ -728,7 +729,7 @@ export class WebGLVideoEngine {
       c = mix(vec3(lum), c, 1.0 + hdrStrength * 0.85); // Boosted HDR saturation for WebGL1
       
       // Clean ACES tone mapping without artificial colour tinting
-      c = clamp((c * (2.51 * c + 0.03)) / (c * (2.43 * c + 0.59) + 0.14), 0.0, 1.0);
+      c = clamp((c * (2.51 * c + vec3(0.03))) / (c * (2.43 * c + vec3(0.59)) + vec3(0.14)), 0.0, 1.0);
       c = mix(col.rgb, c, hdrStrength * 0.65 + 0.2); // Aggressive contrast lift
 
       // Temperature
