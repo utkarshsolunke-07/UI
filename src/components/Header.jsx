@@ -7,6 +7,7 @@ const THEMES = [
   { value: 'aurora',    label: '🌌 Aurora Borealis' },
   { value: 'emerald',   label: '💚 Emerald Mint' },
   { value: 'synthwave', label: '🌸 Neon Synthwave' },
+  { value: 'quantum',   label: '💠 Quantum Core (Ultra)' },
 ];
 
 
@@ -51,7 +52,7 @@ export default function Header({ activeTab, setActiveTab, activeTheme, setActive
             </svg>
           </div>
           <div>
-            <div className="brand-name">UTKARSH AI UPSCALER</div>
+            <div className="brand-name glitch-text" data-text="UTKARSH AI UPSCALER">UTKARSH AI UPSCALER</div>
             <div className="brand-ver">SOTA SUPER-RESOLUTION ENGINE v32.0</div>
           </div>
         </div>

@@ -138,6 +138,7 @@ export default function App() {
 
       {/* Cyber CRT Scanline Shader Overlay */}
       <div className="cyber-scanlines" aria-hidden="true" />
+      <div className="film-grain-texture" aria-hidden="true" />
 
       {/* Background Ambient Glow Orbs */}
       <div className="bg-deco" aria-hidden="true">

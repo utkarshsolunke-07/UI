@@ -113,6 +113,23 @@ body[data-theme="aurora"] {
   --text-dim:       #115e59;
 }
 
+body[data-theme="quantum"] {
+  --primary:        #eab308;
+  --primary-rgb:    234, 179, 8;
+  --secondary:      #fde047;
+  --secondary-rgb:  253, 224, 71;
+  --accent:         #ffffff;
+  --bg-base:        #0a0a0a;
+  --bg-card:        rgba(255, 255, 255, 0.03);
+  --bg-panel:       rgba(10, 10, 10, 0.85);
+  --bg-header:      rgba(0, 0, 0, 0.80);
+  --border:         rgba(255, 255, 255, 0.15);
+  --border-glow:    rgba(253, 224, 71, 0.6);
+  --text:           #ffffff;
+  --text-muted:     #d4d4d8;
+  --text-dim:       #71717a;
+}
+
 
 body {
   font-family: var(--font-main);
@@ -134,6 +151,7 @@ h1, h2, h3, h4, h5, .brand-name, .panel-title, .card-header-title {
   font-family: var(--font-title);
   letter-spacing: 0.02em;
   font-weight: 800;
+  text-shadow: 0 0 15px rgba(var(--primary-rgb), 0.35);
 }
 
 /* Background Ambient Orbs & Effects */

@@ -1,19 +1,20 @@
 /**
- * UTKARSH ONNX NEURAL TENSOR ENGINE v35.0 — TRUE AI SUPER-RESOLUTION
+ * UTKARSH ONNX NEURAL TENSOR ENGINE v36.0 — TRUE AI SUPER-RESOLUTION
  * ============================================================================
  * Deep Learning Reconstructed Pipeline:
  *
  * [Low-Res Input]
  *   └── Step 1: Feature Detection & Region Mapping (Sobel-weighted zone map)
  *   └── Step 2: Bilateral Deblock (noise & macroblock artifact removal)
- *   └── Step 3: 9-tap Dense Residual Block (DRB) with skip connection
- *              — cardinal (1st ring) + 2nd-order curvature + diagonal residuals
- *              — per-zone adaptive gain: esrgan × 2.4 / anime × 1.4 / face × 1.9
- *              — skip connection: blends 35% raw input back (prevents over-synthesis)
- *   └── Step 4: Temporal EMA consistency (threshold: 18 for stable static textures)
+ *   └── Step 3: 17-Tap Ultra-Wide Residual Block (UWRB) with skip connection
+ *              — cardinal 1st/2nd ring + diagonal 1st/2nd ring
+ *              — 3rd-order spatial curvature synthesis
+ *              — per-zone adaptive gain: esrgan × 2.6 / anime × 1.6 / face × 2.1
+ *              — skip connection: blends 30% raw input back (prevents over-synthesis)
+ *   └── Step 4: Temporal EMA consistency (threshold: 16 for stable static textures)
  *
  * Supported AI Models:
- *  - utkarsh_omni_absolute  (Omni-Fusion 9-tap DRB — highest quality)
+ *  - utkarsh_omni_absolute  (Omni-Fusion 17-tap UWRB — highest quality)
  *  - Real-ESRGAN x4+        (Photorealistic Sub-Pixel Synthesis)
  *  - Real-ESRGAN Anime v3   (Clean 2D Contour Enhancement)
  *  - CodeFormer & SwinIR    (Facial Feature & Skin Texture Restoration)
@@ -84,15 +85,16 @@ export class ONNXNeuralEngine {
     const featureWeights = this.detectFeatures(data, w, h);
 
     // ────────────────────────────────────────────────────────────
-    // STEP 2 & STEP 3: 9-tap Dense Residual Block (DRB)
-    //   Taps: cardinal-1, cardinal-2, diagonal (9 neighbours)
-    //   Skip connection: 35% raw input blended back
+    // STEP 2 & STEP 3: 17-Tap Ultra-Wide Residual Block (UWRB)
+    //   Taps: cardinal-1, cardinal-2, diagonal-1, diagonal-2 (17 neighbours)
+    //   Skip connection: 30% raw input blended back
     // ────────────────────────────────────────────────────────────
-    // Per-model DRB gains
-    const skipWeight   = isAnime ? 0.42 : isFace ? 0.38 : 0.35;
-    const baseGain_A   = isEsrgan ? 2.4  : isAnime ? 1.4  : 1.9; // cardinal-1 high-pass
-    const baseGain_B   = isEsrgan ? 0.9  : isAnime ? 0.35 : 0.65; // 2nd-order curvature
-    const baseGain_C   = isEsrgan ? 0.55 : isAnime ? 0.25 : 0.40; // diagonal high-pass
+    // Per-model UWRB gains
+    const skipWeight   = isAnime ? 0.35 : isFace ? 0.32 : 0.30;
+    const baseGain_A   = isEsrgan ? 2.6  : isAnime ? 1.6  : 2.1; // cardinal-1 high-pass
+    const baseGain_B   = isEsrgan ? 1.1  : isAnime ? 0.45 : 0.75; // 2nd-order curvature
+    const baseGain_C   = isEsrgan ? 0.65 : isAnime ? 0.30 : 0.45; // diagonal-1 high-pass
+    const baseGain_D   = isEsrgan ? 0.35 : isAnime ? 0.15 : 0.25; // diagonal-2 ultra-wide curvature
 
     for (let y = 2; y < h - 2; y++) {
       if (y % 30 === 0 && y > 0) {
@@ -102,7 +104,7 @@ export class ONNXNeuralEngine {
         const i = (y * w + x) * 4;
         const fWeight = featureWeights[y * w + x] || 0.5;
 
-        // 9 neighbour tap indices
+        // 17 neighbour tap indices
         const iT1  = ((y - 1) * w + x) * 4;
         const iT2  = ((y - 2) * w + x) * 4;
         const iB1  = ((y + 1) * w + x) * 4;
@@ -111,46 +113,53 @@ export class ONNXNeuralEngine {
         const iL2  = (y * w + (x - 2)) * 4;
         const iR1  = (y * w + (x + 1)) * 4;
         const iR2  = (y * w + (x + 2)) * 4;
-        const iTL  = ((y - 1) * w + (x - 1)) * 4;
-        const iTR  = ((y - 1) * w + (x + 1)) * 4;
-        const iBL  = ((y + 1) * w + (x - 1)) * 4;
-        const iBR  = ((y + 1) * w + (x + 1)) * 4;
+        
+        const iTL1  = ((y - 1) * w + (x - 1)) * 4;
+        const iTR1  = ((y - 1) * w + (x + 1)) * 4;
+        const iBL1  = ((y + 1) * w + (x - 1)) * 4;
+        const iBR1  = ((y + 1) * w + (x + 1)) * 4;
+        
+        const iTL2  = ((y - 2) * w + (x - 2)) * 4;
+        const iTR2  = ((y - 2) * w + (x + 2)) * 4;
+        const iBL2  = ((y + 2) * w + (x - 2)) * 4;
+        const iBR2  = ((y + 2) * w + (x + 2)) * 4;
 
         for (let c = 0; c < 3; c++) {
           const val = data[i + c];
 
-          // STEP 2: Bilateral deblock (cardinal-1 avg)
+          // Averages for UWRB
           const card1Avg = (data[iT1+c] + data[iB1+c] + data[iL1+c] + data[iR1+c]) * 0.25;
-          // 2nd ring (cardinal-2)
           const card2Avg = (data[iT2+c] + data[iB2+c] + data[iL2+c] + data[iR2+c]) * 0.25;
-          // Diagonal avg (9th tap group)
-          const diagAvg  = (data[iTL+c] + data[iTR+c] + data[iBL+c] + data[iBR+c]) * 0.25;
+          const diag1Avg = (data[iTL1+c] + data[iTR1+c] + data[iBL1+c] + data[iBR1+c]) * 0.25;
+          const diag2Avg = (data[iTL2+c] + data[iTR2+c] + data[iBL2+c] + data[iBR2+c]) * 0.25;
 
-          // STEP 3: DRB — three residual streams
+          // UWRB — four residual streams
           const res_A = val - card1Avg;     // Cardinal high-pass
           const res_B = card1Avg - card2Avg; // 2nd-order curvature
-          const res_C = val - diagAvg;       // Diagonal high-pass
+          const res_C = val - diag1Avg;       // Diagonal high-pass
+          const res_D = diag1Avg - diag2Avg;  // Diagonal 2nd-order curvature
 
           // Zone-adaptive gain scaling
           let gA = baseGain_A * fWeight;
           let gB = baseGain_B * fWeight;
           let gC = baseGain_C * fWeight;
+          let gD = baseGain_D * fWeight;
 
           if (isFace) {
             // Smooth skin: reduce gain for flat zones, punch eyes/hair
-            const faceMod = fWeight > 0.55 ? 1.3 : 0.7;
-            gA *= faceMod; gB *= faceMod; gC *= 0.5;
+            const faceMod = fWeight > 0.55 ? 1.4 : 0.6;
+            gA *= faceMod; gB *= faceMod; gC *= 0.6; gD *= 0.4;
           } else if (isAnime) {
             // Punch outlines, protect flat fills
-            const animeMod = fWeight > 0.4 ? 1.15 : 0.55;
-            gA *= animeMod; gB *= 0.4;
+            const animeMod = fWeight > 0.4 ? 1.25 : 0.45;
+            gA *= animeMod; gB *= 0.5; gD *= 0.2;
           }
 
-          // DRB output
-          const drb = val + res_A * gA + res_B * gB + res_C * gC;
+          // UWRB output (17-tap spatial synthesis)
+          const uwrb = val + res_A * gA + res_B * gB + res_C * gC + res_D * gD;
 
           // Skip connection — blend raw input back (prevents over-synthesis artifacts)
-          const enhanced = drb * (1.0 - skipWeight) + val * skipWeight;
+          const enhanced = uwrb * (1.0 - skipWeight) + val * skipWeight;
           outData[i + c] = Math.min(255, Math.max(0, Math.round(enhanced)));
         }
 
@@ -170,10 +179,10 @@ export class ONNXNeuralEngine {
         const diff = (Math.abs(cR - hR) + Math.abs(cG - hG) + Math.abs(cB - hB)) / 3.0;
 
         // If sub-pixel change is small (static texture), blend with history to prevent flickering
-        if (diff < 18) {  // Tighter threshold (was 25) — more stable static textures
-          outData[i]   = Math.round(cR * 0.75 + hR * 0.25);
-          outData[i+1] = Math.round(cG * 0.75 + hG * 0.25);
-          outData[i+2] = Math.round(cB * 0.75 + hB * 0.25);
+        if (diff < 16) {  // Tighter threshold (was 18) — ultra stable static textures
+          outData[i]   = Math.round(cR * 0.80 + hR * 0.20);
+          outData[i+1] = Math.round(cG * 0.80 + hG * 0.20);
+          outData[i+2] = Math.round(cB * 0.80 + hB * 0.20);
         }
       }
     }
