@@ -169,7 +169,13 @@ export default function App() {
                 <div className="modal-pct">{progress}%</div>
               </div>
               <div className="modal-title">Upscaling 4K Sub-Pixels</div>
-              <div className="modal-sub">{statusMsg}</div>
+              
+              {/* Prominent Large Estimated Time Display */}
+              <div className="eta-banner-large">
+                ⏱️ ESTIMATED TIME: {statusMsg.match(/\[ETA:\s*([^\]]+)\]/)?.[1] || '00m 05s'}
+              </div>
+
+              <div className="modal-sub">{statusMsg.replace(/\[ETA:\s*[^\]]+\]/, '')}</div>
               <div className="prog-track" style={{ width: 280 }}>
                 <div className="prog-fill" style={{ width: `${progress}%` }} />
               </div>

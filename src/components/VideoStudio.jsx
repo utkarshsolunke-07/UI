@@ -616,17 +616,23 @@ export default function VideoStudio({ settings, setSettings }) {
               )}
               
               {isExporting && (
-                <div style={{ marginTop: '0.8rem', background: '#0f172a', borderRadius: '8px', padding: '1rem', border: '1px solid rgba(var(--primary-rgb),0.3)' }}>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--primary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <div className="spinner-ring" style={{ width: '12px', height: '12px', borderWidth: '2px' }} />
+                <div style={{ marginTop: '0.8rem', background: '#0f172a', borderRadius: '12px', padding: '1rem', border: '1px solid rgba(var(--primary-rgb),0.4)' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 900, color: 'var(--primary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <div className="spinner-ring" style={{ width: '14px', height: '14px', borderWidth: '2px' }} />
                     AI UPSCALING PROCESS IN PROGRESS...
                   </div>
+                  
+                  {/* Large Prominent Estimated Time Remaining Banner */}
+                  <div className="eta-banner-large" style={{ margin: '0.6rem 0', fontSize: '1.25rem', padding: '0.7rem 1rem' }}>
+                    ⏱️ ESTIMATED TIME: {exportStatus.match(/\[ETA:\s*([^\]]+)\]/)?.[1] || 'Calculating...'}
+                  </div>
+
                   <div className="progress-bar-track" style={{ width: '100%', marginBottom: '0.4rem' }}>
                     <div className="progress-bar-fill" style={{ width: `${exportProgress}%` }} />
                   </div>
-                  <div style={{ fontSize: '0.65rem', color: '#94a3b8', display: 'flex', justifyContent: 'space-between' }}>
-                    <span>{exportStatus}</span>
-                    <span style={{ color: 'var(--primary)', fontWeight: 800 }}>{exportProgress}%</span>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'flex', justifyContent: 'space-between', marginTop: '0.4rem' }}>
+                    <span>{exportStatus.replace(/\[ETA:\s*[^\]]+\]/, '')}</span>
+                    <span style={{ color: 'var(--primary)', fontWeight: 900, fontSize: '0.95rem' }}>{exportProgress}%</span>
                   </div>
                 </div>
               )}
