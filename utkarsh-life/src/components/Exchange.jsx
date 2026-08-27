@@ -95,8 +95,10 @@ export default function Exchange({ coins, energy, maxEnergy, onTap, levelIndex, 
       <div className="w-full flex justify-end mb-4">
         <button 
           onClick={() => setCipherMode(!cipherMode)}
-          className={`px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 border ${
-            cipherMode ? 'bg-red-900/50 border-red-500 text-red-200 shadow-[0_0_15px_rgba(239,68,68,0.3)]' : 'bg-gray-800 border-gray-700 text-gray-300'
+          className={`px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 border transition-all ${
+            cipherMode 
+              ? 'bg-[var(--color-cyber-pink)] border-[var(--color-cyber-pink)] text-white shadow-[0_0_15px_rgba(255,0,127,0.6)]' 
+              : 'glass-panel text-[var(--color-cyber-blue)]'
           }`}
         >
           <ScanText className="w-4 h-4" />
@@ -105,31 +107,31 @@ export default function Exchange({ coins, energy, maxEnergy, onTap, levelIndex, 
       </div>
 
       {cipherMode && (
-        <div className="mb-4 h-12 flex items-center justify-center text-3xl font-mono tracking-[0.5em] text-red-400 font-bold">
+        <div className="mb-4 h-12 flex items-center justify-center text-3xl font-mono tracking-[0.5em] text-[var(--color-cyber-pink)] font-bold drop-shadow-[0_0_10px_rgba(255,0,127,0.8)]">
           {decodedWord.padEnd(targetWord.length, '_')}
         </div>
       )}
 
       {/* Coin Balance */}
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-full bg-accent-gold flex items-center justify-center text-black font-bold text-xl shadow-[0_0_15px_rgba(251,191,36,0.5)]">
+        <div className="w-10 h-10 rounded-full bg-transparent border-2 border-[var(--color-cyber-blue)] flex items-center justify-center text-[var(--color-cyber-blue)] font-bold text-xl shadow-[0_0_15px_rgba(0,240,255,0.5),inset_0_0_10px_rgba(0,240,255,0.3)]">
           ₹
         </div>
-        <span className="text-5xl font-black tracking-tight drop-shadow-md">
+        <span className="text-5xl font-black tracking-tight neon-text-blue">
           {coins.toLocaleString()}
         </span>
       </div>
 
       {/* Level Progress */}
       <div className="w-full flex items-center justify-between px-4 mb-2">
-        <span className="text-sm font-semibold text-gray-300">{LEVELS[levelIndex].name}</span>
-        <span className="text-sm font-semibold text-gray-400">
+        <span className="text-sm font-semibold neon-text-gold">{LEVELS[levelIndex].name}</span>
+        <span className="text-sm font-semibold text-[var(--color-cyber-blue)]">
           Level {levelIndex + 1}/{LEVELS.length}
         </span>
       </div>
-      <div className="w-full h-3 bg-gray-800 rounded-full mb-10 border border-gray-700 overflow-hidden">
+      <div className="w-full h-3 bg-gray-900 rounded-full mb-10 border border-gray-800 overflow-hidden shadow-[inset_0_0_5px_rgba(0,0,0,1)]">
         <div 
-          className="h-full bg-gradient-to-r from-yellow-600 to-accent-gold rounded-full transition-all duration-300"
+          className="h-full bg-[var(--color-cyber-blue)] rounded-full transition-all duration-300 shadow-[0_0_10px_rgba(0,240,255,0.8)]"
           style={{ width: `${Math.min(progressPct, 100)}%` }}
         />
       </div>
@@ -140,17 +142,19 @@ export default function Exchange({ coins, energy, maxEnergy, onTap, levelIndex, 
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
-        className={`w-[280px] h-[280px] rounded-full bg-gradient-to-br border-4 flex items-center justify-center cursor-pointer transition-transform duration-75 relative z-10 ${
+        className={`w-[280px] h-[280px] rounded-full flex items-center justify-center cursor-pointer transition-transform duration-75 relative z-10 ${
           cipherMode 
-            ? 'from-red-900 to-black border-red-700 shadow-[0_0_50px_rgba(239,68,68,0.5),inset_0_0_20px_rgba(255,255,255,0.1)]' 
-            : 'from-gray-700 to-black border-gray-600 shadow-[0_0_50px_rgba(0,0,0,0.8),inset_0_0_20px_rgba(255,255,255,0.1)]'
+            ? 'bg-[var(--color-cyber-dark)] border-4 border-[var(--color-cyber-pink)] shadow-[0_0_50px_rgba(255,0,127,0.5),inset_0_0_30px_rgba(255,0,127,0.3)]' 
+            : 'bg-[var(--color-cyber-dark)] border-4 border-[var(--color-cyber-blue)] shadow-[0_0_50px_rgba(0,240,255,0.5),inset_0_0_30px_rgba(0,240,255,0.3)]'
         }`}
       >
-        <div className={`absolute inset-2 rounded-full border border-gray-500/30 overflow-hidden flex flex-col items-center justify-center ${cipherMode ? 'bg-red-950' : 'bg-gray-800'}`}>
-          <div className="w-40 h-40 bg-gradient-to-br from-accent-gold to-orange-500 rounded-full flex items-center justify-center shadow-inner mb-2">
-            <span className="text-6xl">🧑🏻‍💻</span>
+        <div className={`absolute inset-3 rounded-full overflow-hidden flex flex-col items-center justify-center ${cipherMode ? 'bg-pink-950/50' : 'bg-cyan-950/50'}`}>
+          <div className="w-40 h-40 bg-transparent rounded-full flex items-center justify-center mb-2">
+            <span className="text-7xl drop-shadow-[0_0_20px_rgba(0,240,255,0.8)]">🧑🏻‍💻</span>
           </div>
-          <span className="text-xl font-black text-white uppercase tracking-widest drop-shadow-md">Utkarsh</span>
+          <span className={`text-2xl font-black uppercase tracking-widest ${cipherMode ? 'text-[var(--color-cyber-pink)] drop-shadow-[0_0_10px_rgba(255,0,127,0.8)]' : 'neon-text-blue'}`}>
+            Utkarsh
+          </span>
         </div>
       </div>
 
@@ -163,7 +167,7 @@ export default function Exchange({ coins, energy, maxEnergy, onTap, levelIndex, 
             animate={{ opacity: 0, y: -100, scale: 1.5 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.8, ease: "easeOut" }}
-            className="absolute text-3xl font-black text-white pointer-events-none drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] z-50"
+            className="absolute text-4xl font-black neon-text-gold pointer-events-none z-50"
             style={{ left: click.x - 20, top: click.y - 20 }}
           >
             +1
@@ -172,7 +176,7 @@ export default function Exchange({ coins, energy, maxEnergy, onTap, levelIndex, 
       </AnimatePresence>
 
       {cipherMode && morseInput && (
-        <div className="absolute top-[60%] left-1/2 -translate-x-1/2 text-4xl font-black text-white pointer-events-none drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] z-50 tracking-[0.2em]">
+        <div className="absolute top-[60%] left-1/2 -translate-x-1/2 text-5xl font-black text-[var(--color-cyber-pink)] pointer-events-none drop-shadow-[0_0_15px_rgba(255,0,127,0.8)] z-50 tracking-[0.2em]">
           {morseInput}
         </div>
       )}
@@ -180,14 +184,14 @@ export default function Exchange({ coins, energy, maxEnergy, onTap, levelIndex, 
       {/* Energy Bar */}
       <div className="absolute bottom-24 left-0 w-full px-6">
         <div className="flex justify-between items-center mb-2">
-          <div className="flex items-center gap-1">
-            <Zap className="w-5 h-5 text-accent-gold fill-accent-gold" />
-            <span className="text-lg font-bold">{energy} <span className="text-gray-500">/ {maxEnergy}</span></span>
+          <div className="flex items-center gap-2">
+            <Zap className="w-5 h-5 text-[var(--color-cyber-gold)] drop-shadow-[0_0_5px_rgba(255,215,0,0.8)]" />
+            <span className="text-lg font-bold neon-text-gold">{energy} <span className="text-gray-500 font-normal">/ {maxEnergy}</span></span>
           </div>
         </div>
-        <div className="w-full h-4 bg-gray-800 rounded-full border border-gray-700 p-[2px]">
+        <div className="w-full h-3 bg-gray-900 rounded-full border border-[var(--color-cyber-border)] p-[1px] shadow-[inset_0_0_5px_rgba(0,0,0,1)]">
           <div 
-            className="h-full bg-gradient-to-r from-orange-500 to-accent-gold rounded-full transition-all duration-300"
+            className="h-full bg-[var(--color-cyber-gold)] rounded-full transition-all duration-300 shadow-[0_0_10px_rgba(255,215,0,0.8)]"
             style={{ width: `${(energy / maxEnergy) * 100}%` }}
           />
         </div>

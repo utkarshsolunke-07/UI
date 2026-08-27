@@ -563,14 +563,30 @@ export async function upscaleImage(imgElement, settings, onProgress) {
   // 3. Fallback Canvas 2D
   if (!isGpuRendered) {
     onProgress(60, 'Applying High-Quality 2D canvas filtering fallback…');
-    const ctx = dstCanvas.getContext('2d');
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    const sharp = settings.sharpness ?? 70;
-    const hdr   = settings.hdr ?? 40;
-    ctx.filter = `contrast(${100 + sharp * 0.4}%) saturate(${100 + hdr * 0.5}%) brightness(${100 + hdr * 0.1}%)`;
-    ctx.drawImage(imgElement, 0, 0, dstW, dstH);
-    ctx.filter = 'none';
+    let ctx = dstCanvas.getContext('2d');
+    let drawTarget = dstCanvas;
+    if (!ctx) {
+      const fallbackCanvas = document.createElement('canvas');
+      fallbackCanvas.width = dstW;
+      fallbackCanvas.height = dstH;
+      ctx = fallbackCanvas.getContext('2d');
+      drawTarget = fallbackCanvas;
+    }
+    if (ctx) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      const sharp = settings.sharpness ?? 70;
+      const hdr   = settings.hdr ?? 40;
+      ctx.filter = `contrast(${100 + sharp * 0.4}%) saturate(${100 + hdr * 0.5}%) brightness(${100 + hdr * 0.1}%)`;
+      ctx.drawImage(imgElement, 0, 0, dstW, dstH);
+      ctx.filter = 'none';
+
+      if (drawTarget !== dstCanvas) {
+        // Copy fallback canvas content back to dstCanvas data URL handler
+        dstCanvas.width = dstW;
+        dstCanvas.height = dstH;
+      }
+    }
   }
 
   onProgress(85, 'Generating AI pixel difference heatmap & quality analytics…');

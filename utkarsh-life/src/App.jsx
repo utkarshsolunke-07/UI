@@ -163,7 +163,7 @@ function App() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-game-bg text-white max-w-md mx-auto relative overflow-hidden shadow-2xl border-x border-gray-900">
+    <div className="flex flex-col h-full bg-transparent text-white max-w-md mx-auto relative overflow-hidden shadow-2xl border-x border-[var(--color-cyber-border)]">
       <Header coins={Math.floor(coins)} pph={pph} levelIndex={levelIndex} />
       
       <div className="flex-1 overflow-y-auto pb-20 scrollbar-hide">

@@ -50,9 +50,10 @@ self.onmessage = async function(e) {
       };
 
       if (audioData && audioData.buffer && audioData.buffer.length > 0) {
+        const numChannels = Math.min(audioData.numberOfChannels || 2, 2);
         muxerConfig.audio = {
           codec:            'aac',
-          numberOfChannels: audioData.numberOfChannels,
+          numberOfChannels: numChannels,
           sampleRate:       audioData.sampleRate,
         };
       }

@@ -1269,6 +1269,7 @@ export class WebGLVideoEngine {
     if (enableTAA) {
       const readHistTex  = (this._frameIndex % 2 === 0) ? this.histTexA : this.histTexB;
       const writeHistFBO = (this._frameIndex % 2 === 0) ? this.fboHistB : this.fboHistA;
+      const writeHistTex = (this._frameIndex % 2 === 0) ? this.histTexB : this.histTexA;
 
       // 1. Draw TAA pass into writeHistFBO
       gl.bindFramebuffer(gl.FRAMEBUFFER, writeHistFBO);
@@ -1289,23 +1290,24 @@ export class WebGLVideoEngine {
       gl.uniform1f(this.locTAA.blendWeight, blendWeight);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-      // 2. Blit writeHistFBO (FBO -> Screen Canvas null)
-      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, writeHistFBO);
-      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
-      gl.blitFramebuffer(0, 0, dstW, dstH, 0, 0, dstW, dstH, gl.COLOR_BUFFER_BIT, gl.NEAREST);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    } else if (this.isWebGL2) {
-      // TAA disabled in WebGL 2 — blit subpixTex (FBO -> Screen Canvas null)
-      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.fboSubPix);
-      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
-      gl.blitFramebuffer(0, 0, dstW, dstH, 0, 0, dstW, dstH, gl.COLOR_BUFFER_BIT, gl.NEAREST);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    } else {
-      // WebGL 1 Fallback: Draw final processed colorTex to default framebuffer (canvas null)
+      // 2. Universal Blit to screen (null) using progBlit quad draw (100% compatible across all GPUs & formats)
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, dstW, dstH);
-      gl.useProgram(this.progBlit); // Use FBO passthrough shader to blit to canvas without Y-flip
-      this._bindAttributes(this.progBlit);
+      gl.useProgram(this.progBlit);
+      if (this.isWebGL2) gl.bindVertexArray(this.vaos.taa);
+      else this._bindAttributes(this.progBlit);
+      
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, writeHistTex);
+      gl.uniform1i(this.locEASU.src, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    } else {
+      // TAA disabled (or WebGL 1): Draw finalTex directly to screen canvas (null) using progBlit
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, dstW, dstH);
+      gl.useProgram(this.progBlit);
+      if (this.isWebGL2) gl.bindVertexArray(this.vaos.easu);
+      else this._bindAttributes(this.progBlit);
       
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, finalTex);
@@ -1313,6 +1315,7 @@ export class WebGLVideoEngine {
       gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
 
+    gl.flush();
     this._frameIndex++;
     if (this.isWebGL2) gl.bindVertexArray(null);
   }
