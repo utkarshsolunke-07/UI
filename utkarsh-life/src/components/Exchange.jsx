@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { formatCoins, LEVELS, getDailyCipherWord, MORSE_CODE_DICT, CEO_SKINS } from '../utils/gameLogic';
+import { soundManager } from '../utils/soundManager';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Zap, ScanText } from 'lucide-react';
 
@@ -45,6 +46,7 @@ export default function Exchange({
     coinRef.current.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(0.95)`;
 
     if (!cipherMode) {
+      soundManager.playTap();
       onTap(tapPower);
       const newClick = { id: Date.now() + Math.random(), x: e.clientX, y: e.clientY, text: `+${tapPower}` };
       setClicks((prev) => [...prev, newClick]);
@@ -162,9 +164,13 @@ export default function Exchange({
         }`}
       >
         <div className={`absolute inset-3 rounded-full overflow-hidden flex flex-col items-center justify-center ${cipherMode ? 'bg-pink-950/50' : 'bg-cyan-950/50'}`}>
-          <div className="w-40 h-40 bg-transparent rounded-full flex items-center justify-center mb-2">
+          <div className="w-44 h-44 bg-transparent rounded-full flex items-center justify-center mb-1 overflow-hidden p-2">
             {activeSkin.image ? (
-              <img src={activeSkin.image} alt={activeSkin.name} className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(0,240,255,0.8)]" />
+              <img 
+                src={activeSkin.image} 
+                alt={activeSkin.name} 
+                className="w-full h-full object-cover rounded-full drop-shadow-[0_0_20px_rgba(0,240,255,0.8)] transform hover:scale-105 transition-transform" 
+              />
             ) : (
               <span className="text-7xl drop-shadow-[0_0_20px_rgba(0,240,255,0.8)]">{activeSkin.emoji}</span>
             )}

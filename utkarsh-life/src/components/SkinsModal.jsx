@@ -39,9 +39,9 @@ export default function SkinsModal({ isOpen, onClose, coins, levelIndex, selecte
                 }`}
                 onClick={() => isUnlocked && onSelectSkin(skin.id)}
               >
-                <div className="h-16 flex items-center justify-center my-2 drop-shadow-[0_0_15px_rgba(0,240,255,0.5)]">
+                <div className="w-24 h-24 my-2 rounded-2xl overflow-hidden border border-[var(--color-cyber-border)] shadow-[0_0_15px_rgba(0,240,255,0.3)] flex items-center justify-center bg-black/40">
                   {skin.image ? (
-                    <img src={skin.image} alt={skin.name} className="max-h-full object-contain" />
+                    <img src={skin.image} alt={skin.name} className="w-full h-full object-cover" />
                   ) : (
                     <span className="text-5xl">{skin.emoji}</span>
                   )}

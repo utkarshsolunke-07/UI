@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { formatCoins, calculateUpgradeCost, calculateUpgradePph, getDailyComboCards } from '../utils/gameLogic';
+import { soundManager } from '../utils/soundManager';
 import { TrendingUp, Lock, HelpCircle } from 'lucide-react';
 
 export default function Mine({ coins, upgrades, onBuy, comboFound, onComboCardFound }) {
@@ -11,6 +12,7 @@ export default function Mine({ coins, upgrades, onBuy, comboFound, onComboCardFo
   const handleBuy = (upgrade) => {
     const cost = calculateUpgradeCost(upgrade.cost, upgrade.level);
     const addedPph = calculateUpgradePph(upgrade.pph, upgrade.level) - (upgrade.level > 0 ? calculateUpgradePph(upgrade.pph, upgrade.level - 1) : 0);
+    soundManager.playPurchase();
     onBuy(upgrade.id, cost, addedPph);
     
     if (targetComboCards.includes(upgrade.id) && !comboFound.includes(upgrade.id)) {
@@ -89,8 +91,12 @@ export default function Mine({ coins, upgrades, onBuy, comboFound, onComboCardFo
                 onClick={() => canAfford && handleBuy(u)}
               >
                 <div className="flex justify-between items-start mb-2">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center border ${canAfford ? 'bg-[var(--color-cyber-dark)] border-[var(--color-cyber-blue)] shadow-[0_0_10px_rgba(0,240,255,0.3)]' : 'bg-gray-800 border-gray-700'}`}>
-                    <TrendingUp className={`w-6 h-6 ${canAfford ? 'text-[var(--color-cyber-blue)] drop-shadow-[0_0_5px_rgba(0,240,255,0.8)]' : 'text-gray-500'}`} />
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center border overflow-hidden ${canAfford ? 'bg-[var(--color-cyber-dark)] border-[var(--color-cyber-blue)] shadow-[0_0_10px_rgba(0,240,255,0.3)]' : 'bg-gray-800 border-gray-700'}`}>
+                    {u.image ? (
+                      <img src={u.image} alt={u.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <TrendingUp className={`w-6 h-6 ${canAfford ? 'text-[var(--color-cyber-blue)] drop-shadow-[0_0_5px_rgba(0,240,255,0.8)]' : 'text-gray-500'}`} />
+                    )}
                   </div>
                   <div className="text-right">
                     <span className="text-[10px] text-[var(--color-cyber-pink)] font-bold uppercase drop-shadow-[0_0_5px_rgba(255,0,127,0.5)]">lvl {u.level}</span>

@@ -4,7 +4,15 @@ import { Calendar, CheckCircle2, Tv, Send, Coins, Gamepad2, Key, Lock } from 'lu
 import MemoryMinigame from './MemoryMinigame';
 import KeyPuzzleGame from './KeyPuzzleGame';
 
-export default function Earn({ coins, onClaimDailyReward, currentStreak, canClaimToday, onMinigameReward, onWinKey }) {
+export default function Earn({ 
+  coins, 
+  onClaimDailyReward, 
+  currentStreak, 
+  canClaimToday, 
+  onMinigameReward,
+  onWinKey,
+  onOpenSpinWheel
+}) {
   const [activeTab, setActiveTab] = useState('daily'); // daily, tasks, minigame, keypuzzle
 
   return (
@@ -12,7 +20,23 @@ export default function Earn({ coins, onClaimDailyReward, currentStreak, canClai
       <div className="flex items-center justify-center mb-6">
         <Coins className="w-16 h-16 text-[var(--color-cyber-gold)] drop-shadow-[0_0_15px_rgba(255,215,0,0.8)]" />
       </div>
-      <h2 className="text-2xl font-black text-center mb-6 neon-text-blue uppercase tracking-widest">Earn more</h2>
+      <h2 className="text-2xl font-black text-center mb-4 neon-text-blue uppercase tracking-widest">Earn more</h2>
+      
+      {/* Hero Wheel Spin Banner */}
+      <button 
+        onClick={onOpenSpinWheel}
+        className="mb-6 glass-panel p-4 bg-gradient-to-r from-yellow-950/60 to-purple-950/60 border-yellow-400 flex items-center justify-between shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:scale-[1.02] transition-transform text-left"
+      >
+        <div>
+          <h3 className="font-black text-base text-yellow-400 uppercase tracking-wider flex items-center gap-2">
+            <span>Daily Wheel</span> 🎰
+          </h3>
+          <p className="text-xs text-gray-300">Spin daily for free coins, keys, & energy surge!</p>
+        </div>
+        <div className="px-3 py-1.5 bg-yellow-400 text-black font-black text-xs rounded-xl shadow-[0_0_10px_rgba(255,215,0,0.8)]">
+          SPIN
+        </div>
+      </button>
       
       <div className="flex gap-1 mb-6 glass-panel p-1">
         <button

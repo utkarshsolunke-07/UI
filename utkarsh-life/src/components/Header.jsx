@@ -1,8 +1,8 @@
 import React from 'react';
 import { formatCoins, LEVELS, CEO_SKINS } from '../utils/gameLogic';
-import { Settings, Cpu, Zap, Key, Shirt, ChevronRight, CloudUpload, CloudCog } from 'lucide-react';
+import { Settings, Cpu, Zap, Key, Shirt, ChevronRight, CloudUpload, CloudCog, Award } from 'lucide-react';
 
-export default function Header({ pph, levelIndex, keysCount, selectedSkin, onOpenSkills, onOpenBoost, onOpenSkins, onOpenLeague, isSyncing }) {
+export default function Header({ pph, levelIndex, keysCount, selectedSkin, onOpenSkills, onOpenBoost, onOpenSkins, onOpenLeague, onOpenAchievements, isSyncing }) {
   const currentLevel = LEVELS[levelIndex];
   const activeSkinObj = CEO_SKINS.find(s => s.id === selectedSkin) || CEO_SKINS[0];
   
@@ -16,7 +16,7 @@ export default function Header({ pph, levelIndex, keysCount, selectedSkin, onOpe
             className="flex items-center gap-2 glass-panel px-2.5 py-1 hover:border-[var(--color-cyber-pink)] transition-all cursor-pointer group"
           >
             {activeSkinObj.image ? (
-              <img src={activeSkinObj.image} alt="Avatar" className="w-8 h-8 object-contain drop-shadow-[0_0_5px_rgba(0,240,255,0.8)]" />
+              <img src={activeSkinObj.image} alt="Avatar" className="w-6 h-6 rounded-full object-cover border border-[var(--color-cyber-blue)]" />
             ) : (
               <span className="text-xl drop-shadow-[0_0_5px_rgba(0,240,255,0.8)]">{activeSkinObj.emoji}</span>
             )}
@@ -47,6 +47,14 @@ export default function Header({ pph, levelIndex, keysCount, selectedSkin, onOpe
           >
             <Cpu className="w-3.5 h-3.5" />
             <span>Skills</span>
+          </button>
+
+          <button 
+            onClick={onOpenAchievements}
+            className="px-2.5 py-1.5 glass-panel border-yellow-400 flex items-center gap-1 text-xs font-black text-yellow-400 hover:bg-yellow-400 hover:text-black transition-all shadow-[0_0_10px_rgba(255,215,0,0.3)]"
+          >
+            <Award className="w-3.5 h-3.5" />
+            <span>Badges</span>
           </button>
         </div>
       </div>

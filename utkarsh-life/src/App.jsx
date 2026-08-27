@@ -11,6 +11,8 @@ import BoostModal from './components/BoostModal';
 import SkinsModal from './components/SkinsModal';
 import LeagueModal from './components/LeagueModal';
 import MarketEventBanner from './components/MarketEventBanner';
+import SpinWheelModal from './components/SpinWheelModal';
+import AchievementsModal from './components/AchievementsModal';
 import { 
   INITIAL_UPGRADES, 
   INITIAL_SKILLS, 
@@ -29,6 +31,8 @@ function App() {
   const [isBoostOpen, setIsBoostOpen] = useState(false);
   const [isSkinsOpen, setIsSkinsOpen] = useState(false);
   const [isLeagueOpen, setIsLeagueOpen] = useState(false);
+  const [isSpinWheelOpen, setIsSpinWheelOpen] = useState(false);
+  const [isAchievementsOpen, setIsAchievementsOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   
   // Game State
@@ -387,6 +391,7 @@ function App() {
         onOpenBoost={() => setIsBoostOpen(true)}
         onOpenSkins={() => setIsSkinsOpen(true)}
         onOpenLeague={() => setIsLeagueOpen(true)}
+        onOpenAchievements={() => setIsAchievementsOpen(true)}
         isSyncing={isSyncing}
       />
 
@@ -430,6 +435,7 @@ function App() {
             canClaimToday={canClaimToday}
             onMinigameReward={handleMinigameReward}
             onWinKey={handleWinKey}
+            onOpenSpinWheel={() => setIsSpinWheelOpen(true)}
           />
         )}
         {activeTab === 'airdrop' && (
@@ -475,6 +481,22 @@ function App() {
         onClose={() => setIsLeagueOpen(false)}
         coins={coins}
         levelIndex={levelIndex}
+      />
+
+      <SpinWheelModal 
+        isOpen={isSpinWheelOpen}
+        onClose={() => setIsSpinWheelOpen(false)}
+        onRewardClaimed={(prize) => {
+          if (prize.type === 'coins') setCoins(prev => prev + prize.value);
+          if (prize.type === 'keys') setKeysCount(prev => prev + prize.value);
+          if (prize.type === 'energy') setEnergy(maxEnergy);
+        }}
+      />
+
+      <AchievementsModal 
+        isOpen={isAchievementsOpen}
+        onClose={() => setIsAchievementsOpen(false)}
+        gameState={{ coins, keysCount, unlockedSkins, upgrades, dailyCipherSolved }}
       />
 
       {offlineEarnings > 0 && (
