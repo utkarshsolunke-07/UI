@@ -4,7 +4,7 @@ import { TrendingUp, Lock, HelpCircle } from 'lucide-react';
 
 export default function Mine({ coins, upgrades, onBuy, comboFound, onComboCardFound }) {
   const [activeCategory, setActiveCategory] = useState('PR & Team');
-  const categories = ['PR & Team', 'Markets', 'Legal'];
+  const categories = ['PR & Team', 'Markets', 'Legal', 'Web3', 'Specials'];
 
   const targetComboCards = getDailyComboCards();
 

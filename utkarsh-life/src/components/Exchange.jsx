@@ -1,9 +1,19 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { formatCoins, LEVELS, getDailyCipherWord, MORSE_CODE_DICT } from '../utils/gameLogic';
+import React, { useState, useRef } from 'react';
+import { formatCoins, LEVELS, getDailyCipherWord, MORSE_CODE_DICT, CEO_SKINS } from '../utils/gameLogic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Zap, ScanText } from 'lucide-react';
 
-export default function Exchange({ coins, energy, maxEnergy, onTap, levelIndex, onCipherSolved, cipherSolved }) {
+export default function Exchange({ 
+  coins, 
+  energy, 
+  maxEnergy, 
+  onTap, 
+  levelIndex, 
+  onCipherSolved, 
+  cipherSolved,
+  selectedSkin,
+  tapPower
+}) {
   const [clicks, setClicks] = useState([]);
   const [cipherMode, setCipherMode] = useState(false);
   const [morseInput, setMorseInput] = useState('');
@@ -13,6 +23,8 @@ export default function Exchange({ coins, energy, maxEnergy, onTap, levelIndex, 
   const targetWord = getDailyCipherWord();
   const tapStartTime = useRef(0);
   const cipherTimeout = useRef(null);
+
+  const activeSkin = CEO_SKINS.find(s => s.id === selectedSkin) || CEO_SKINS[0];
 
   const handlePointerDown = (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -33,8 +45,8 @@ export default function Exchange({ coins, energy, maxEnergy, onTap, levelIndex, 
     coinRef.current.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(0.95)`;
 
     if (!cipherMode) {
-      onTap(1);
-      const newClick = { id: Date.now() + Math.random(), x: e.clientX, y: e.clientY };
+      onTap(tapPower);
+      const newClick = { id: Date.now() + Math.random(), x: e.clientX, y: e.clientY, text: `+${tapPower}` };
       setClicks((prev) => [...prev, newClick]);
       setTimeout(() => {
         setClicks((prev) => prev.filter((c) => c.id !== newClick.id));
@@ -53,18 +65,15 @@ export default function Exchange({ coins, energy, maxEnergy, onTap, levelIndex, 
       
       setMorseInput(prev => prev + symbol);
 
-      // Reset morse input if they wait too long before next tap (end of letter)
       cipherTimeout.current = setTimeout(() => {
         setMorseInput(currentMorse => {
           if (!currentMorse) return '';
           
-          // Try to decode the current morse
           const letter = Object.keys(MORSE_CODE_DICT).find(key => MORSE_CODE_DICT[key] === currentMorse);
           
           if (letter) {
             setDecodedWord(prev => {
               const newWord = prev + letter;
-              // Check if it matches target word so far
               if (targetWord.startsWith(newWord)) {
                 if (newWord === targetWord) {
                   onCipherSolved();
@@ -72,14 +81,12 @@ export default function Exchange({ coins, energy, maxEnergy, onTap, levelIndex, 
                 }
                 return newWord;
               }
-              // Failed match, reset word
               return '';
             });
           } else {
-            // Invalid letter, reset word
             setDecodedWord('');
           }
-          return ''; // clear input for next letter
+          return '';
         });
       }, 800);
     }
@@ -129,11 +136,17 @@ export default function Exchange({ coins, energy, maxEnergy, onTap, levelIndex, 
           Level {levelIndex + 1}/{LEVELS.length}
         </span>
       </div>
-      <div className="w-full h-3 bg-gray-900 rounded-full mb-10 border border-gray-800 overflow-hidden shadow-[inset_0_0_5px_rgba(0,0,0,1)]">
+      <div className="w-full h-3 bg-gray-900 rounded-full mb-4 border border-gray-800 overflow-hidden shadow-[inset_0_0_5px_rgba(0,0,0,1)]">
         <div 
           className="h-full bg-[var(--color-cyber-blue)] rounded-full transition-all duration-300 shadow-[0_0_10px_rgba(0,240,255,0.8)]"
           style={{ width: `${Math.min(progressPct, 100)}%` }}
         />
+      </div>
+
+      {/* 2026 Market Reality Ticker */}
+      <div className="mb-6 flex items-center justify-center gap-2 px-3 py-1 bg-red-900/30 border border-red-500/50 rounded-full">
+        <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_5px_rgba(239,68,68,0.8)]" />
+        <span className="text-[10px] font-bold text-red-400 tracking-wider">$HMSTR Price: $0.00018</span>
       </div>
 
       {/* Tapping Coin */}
@@ -150,10 +163,14 @@ export default function Exchange({ coins, energy, maxEnergy, onTap, levelIndex, 
       >
         <div className={`absolute inset-3 rounded-full overflow-hidden flex flex-col items-center justify-center ${cipherMode ? 'bg-pink-950/50' : 'bg-cyan-950/50'}`}>
           <div className="w-40 h-40 bg-transparent rounded-full flex items-center justify-center mb-2">
-            <span className="text-7xl drop-shadow-[0_0_20px_rgba(0,240,255,0.8)]">🧑🏻‍💻</span>
+            {activeSkin.image ? (
+              <img src={activeSkin.image} alt={activeSkin.name} className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(0,240,255,0.8)]" />
+            ) : (
+              <span className="text-7xl drop-shadow-[0_0_20px_rgba(0,240,255,0.8)]">{activeSkin.emoji}</span>
+            )}
           </div>
           <span className={`text-2xl font-black uppercase tracking-widest ${cipherMode ? 'text-[var(--color-cyber-pink)] drop-shadow-[0_0_10px_rgba(255,0,127,0.8)]' : 'neon-text-blue'}`}>
-            Utkarsh
+            {activeSkin.name}
           </span>
         </div>
       </div>
@@ -170,7 +187,7 @@ export default function Exchange({ coins, energy, maxEnergy, onTap, levelIndex, 
             className="absolute text-4xl font-black neon-text-gold pointer-events-none z-50"
             style={{ left: click.x - 20, top: click.y - 20 }}
           >
-            +1
+            {click.text}
           </motion.div>
         ))}
       </AnimatePresence>
