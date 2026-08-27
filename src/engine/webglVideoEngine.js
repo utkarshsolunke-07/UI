@@ -77,10 +77,10 @@ export class WebGLVideoEngine {
       this._lastSrcW = 0;
     }, false);
 
-    // Check for float texture support
+    // Check for color-renderable float texture framebuffer support
     this.hasFloatFBO = this.isWebGL2
       ? !!gl.getExtension('EXT_color_buffer_float')
-      : !!(gl.getExtension('OES_texture_float') || gl.getExtension('OES_texture_half_float'));
+      : !!(gl.getExtension('WEBGL_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'));
 
     this._initPrograms();
     this._initVAO();

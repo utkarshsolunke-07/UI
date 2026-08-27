@@ -38,6 +38,10 @@ export async function exportOfflineVideo(
     let worker = null;
 
     try {
+      if (typeof window !== 'undefined' && typeof VideoEncoder === 'undefined') {
+        throw new Error('Hardware VideoEncoder (WebCodecs) is not supported on this browser or mobile device. Please use Chrome, Edge, or Safari 16.4+.');
+      }
+
       const rawDur  = videoElementSource.duration;
       const duration = (rawDur && !isNaN(rawDur) && isFinite(rawDur)) ? rawDur : (rawDur || 10);
 
