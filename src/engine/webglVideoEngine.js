@@ -1222,10 +1222,9 @@ export class WebGLVideoEngine {
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     // ─────── PASS 3.5: Sub-Pixel Deformable Conv ───────
-    let taaInputTex = this.colorTex;
+    let finalTex = this.colorTex;
     if (this.isWebGL2) {
-      const subpixTargetFBO = enableTAA ? this.fboSubPix : null;
-      gl.bindFramebuffer(gl.FRAMEBUFFER, subpixTargetFBO);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fboSubPix);
       gl.viewport(0, 0, dstW, dstH);
       gl.useProgram(this.progSubPix);
       gl.bindVertexArray(this.vaos.subpix);
@@ -1237,21 +1236,22 @@ export class WebGLVideoEngine {
       if (this.locSubPix.sharpness) gl.uniform1f(this.locSubPix.sharpness, sharpness);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-      taaInputTex = this.subpixTex;
+      finalTex = this.subpixTex;
     }
 
-    // ─────── PASS 4: TAA ───────
+    // ─────── PASS 4: TAA & FINAL DISPLAY BLIT ───────
     if (enableTAA) {
       const readHistTex  = (this._frameIndex % 2 === 0) ? this.histTexA : this.histTexB;
       const writeHistFBO = (this._frameIndex % 2 === 0) ? this.fboHistB : this.fboHistA;
 
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      // 1. Draw TAA pass into writeHistFBO
+      gl.bindFramebuffer(gl.FRAMEBUFFER, writeHistFBO);
       gl.viewport(0, 0, dstW, dstH);
       gl.useProgram(this.progTAA);
       gl.bindVertexArray(this.vaos.taa);
 
       gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, taaInputTex);
+      gl.bindTexture(gl.TEXTURE_2D, finalTex);
       gl.uniform1i(this.locTAA.current, 0);
 
       gl.activeTexture(gl.TEXTURE1);
@@ -1263,19 +1263,26 @@ export class WebGLVideoEngine {
       gl.uniform1f(this.locTAA.blendWeight, blendWeight);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
-      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, writeHistFBO);
+      // 2. Blit writeHistFBO (FBO -> Screen Canvas null)
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, writeHistFBO);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
       gl.blitFramebuffer(0, 0, dstW, dstH, 0, 0, dstW, dstH, gl.COLOR_BUFFER_BIT, gl.NEAREST);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    } else if (!this.isWebGL2) {
-      // WebGL 1 Fallback: Ensure the final processed texture is actually drawn to the default framebuffer (canvas)
+    } else if (this.isWebGL2) {
+      // TAA disabled in WebGL 2 — blit subpixTex (FBO -> Screen Canvas null)
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.fboSubPix);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+      gl.blitFramebuffer(0, 0, dstW, dstH, 0, 0, dstW, dstH, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } else {
+      // WebGL 1 Fallback: Draw final processed colorTex to default framebuffer (canvas null)
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, dstW, dstH);
       gl.useProgram(this.progEASU); // Use basic passthrough shader to blit to canvas
       this._bindAttributes(this.progEASU);
       
       gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, taaInputTex);
+      gl.bindTexture(gl.TEXTURE_2D, finalTex);
       gl.uniform1i(this.locEASU.src, 0);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
     }

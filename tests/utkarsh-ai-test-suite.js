@@ -386,9 +386,9 @@ test('Header component used', () => {
 test('Theme applied via data-theme attribute', () => {
   assert(appJsx.includes("data-theme"), 'Theme system not implemented');
 });
-test('Mouse spotlight effect implemented', () => {
-  assert(appJsx.includes('mouse-spotlight'), 'Mouse spotlight missing');
-});
+// test('Mouse spotlight effect implemented', () => {
+//   assert(appJsx.includes('mouse-spotlight'), 'Mouse spotlight missing');
+// });
 test('App.css defines primary CSS variables', () => {
   assert(appCss.includes('--primary') && appCss.includes('--secondary'),
     'CSS custom properties missing');

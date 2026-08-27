@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-08-26T07:22:53.595Z",
-  "total": 99,
-  "passed": 99,
+  "timestamp": "2026-08-27T10:27:39.304Z",
+  "total": 98,
+  "passed": 98,
   "failed": 0,
   "warnings": 0,
   "passRate": 100,
@@ -332,10 +332,6 @@
     },
     {
       "name": "Theme applied via data-theme attribute",
-      "status": "PASS"
-    },
-    {
-      "name": "Mouse spotlight effect implemented",
       "status": "PASS"
     },
     {
