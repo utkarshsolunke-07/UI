@@ -244,14 +244,14 @@ export class WebGLVideoEngine {
         float dD1 = abs(dot(cNE.rgb, vec3(0.333)) - dot(cSW.rgb, vec3(0.333)));
         float dD2 = abs(dot(cNW.rgb, vec3(0.333)) - dot(cSE.rgb, vec3(0.333)));
 
-        float edgeStrength = clamp((dH + dV + dD1 + dD2) * 10.0, 0.0, 1.0); // Boosted edge detection
+        float edgeStrength = clamp((dH + dV + dD1 + dD2) * 5.0, 0.0, 1.0);
 
-        // Sub-pixel residual reconstruction (synthesizes new details aggressively at high scale)
-        vec4 subpixelResidual = cC + (cC * 4.0 - (cN + cS + cE + cW)) * (1.2 + edgeStrength * 2.5);
-        subpixelResidual = clamp(subpixelResidual, vMin * 0.88, vMax * 1.12);
+        // Sub-pixel residual reconstruction (clean, natural detail synthesis)
+        vec4 subpixelResidual = cC + (cC * 4.0 - (cN + cS + cE + cW)) * (0.5 + edgeStrength * 0.6);
+        subpixelResidual = clamp(subpixelResidual, vMin * 0.95, vMax * 1.05);
 
-        // Extreme AI Upscale Blend
-        fragColor = clamp(mix(col, subpixelResidual, 0.60 + edgeStrength * 0.40), 0.0, 1.0);
+        // Clean AI Upscale Blend
+        fragColor = clamp(mix(col, subpixelResidual, 0.35 + edgeStrength * 0.35), 0.0, 1.0);
       }`;
     }
 
@@ -482,8 +482,8 @@ export class WebGLVideoEngine {
 
         vec4 rcpContrast = vec4(1.0) / max(vMax - vMin, vec4(0.0001));
         
-        // Massive RCAS multiplier for jaw-dropping visual clarity
-        float sharpAmt = clamp((u_sharpness * 2.5 + u_clarity * 1.8), 0.2, 4.5);
+        // Pristine contrast-adaptive sharpening (RCAS)
+        float sharpAmt = clamp((u_sharpness * 0.95 + u_clarity * 0.70), 0.1, 1.75);
         
         // Model-specific profile tweaks
         if (u_modelMode == 1) { // Real-ESRGAN x4+ (Photorealistic graphics)
@@ -527,8 +527,8 @@ export class WebGLVideoEngine {
       vec4 cS = texture2D(u_upscaled, v_uv + vec2( 0.0,        rcpDst.y));
 
       vec4 laplacian = cC - (cN + cW + cE + cS) * 0.25;
-      // High-impact sharpening for WebGL1
-      float mult = (u_sharpness * 3.5 + u_clarity * 2.0) * 0.8; 
+      // Clean sharpening for WebGL1
+      float mult = (u_sharpness * 1.2 + u_clarity * 0.8) * 0.5; 
       gl_FragColor = clamp(cC + laplacian * mult, 0.0, 1.0);
     }`;
   }
@@ -689,10 +689,9 @@ export class WebGLVideoEngine {
           c.b = pow(max(c.b, 0.0), 0.74) * 1.40;
           c = mix(c, vibrance(c, 1.4), 0.65); // High-vibrance kinetic punch
         } else {
-          // EXTREME AI UPSCALE DEFAULT GRADE
-          // Radically boosts micro-contrast, lifts shadows, and enhances vibrance for an undeniable "Enhanced" look
-          c = pow(max(c, vec3(0.0)), vec3(0.82)) * 1.18; // Aggressive S-Curve contrast
-          c = mix(c, vibrance(c, 1.4), 0.5);             // Major color pop!
+          // PRISTINE STUDIO AI SUPER-RESOLUTION GRADE
+          // Clean, natural contrast with zero artificial over-saturation or crushed shadows
+          c = pow(max(c, vec3(0.0)), vec3(0.96)) * 1.04;
         }
 
         // ── 6. Ultra-Clean Micro-Contrast & Surface Normal Refinement ──
