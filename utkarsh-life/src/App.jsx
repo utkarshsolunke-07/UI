@@ -3,7 +3,10 @@ import Header from './components/Header';
 import Navigation from './components/Navigation';
 import Exchange from './components/Exchange';
 import Mine from './components/Mine';
-import { INITIAL_UPGRADES, LEVELS, MAX_ENERGY_LEVELS, RECHARGE_RATE_PER_SEC, getLevelIndex } from './utils/gameLogic';
+import Earn from './components/Earn';
+import Friends from './components/Friends';
+import Airdrop from './components/Airdrop';
+import { INITIAL_UPGRADES, LEVELS, MAX_ENERGY_LEVELS, RECHARGE_RATE_PER_SEC, getLevelIndex, getDailyComboCards } from './utils/gameLogic';
 
 function App() {
   const [activeTab, setActiveTab] = useState('exchange');
@@ -29,6 +32,25 @@ function App() {
     return saved ? parseInt(saved, 10) : Date.now();
   });
 
+  // Daily States
+  const getTodayStr = () => new Date().toISOString().split('T')[0];
+  
+  const [dailyCipherSolved, setDailyCipherSolved] = useState(() => {
+    const saved = localStorage.getItem('ul_cipher');
+    return saved === getTodayStr();
+  });
+
+  const [comboFound, setComboFound] = useState(() => {
+    const savedDate = localStorage.getItem('ul_combo_date');
+    if (savedDate === getTodayStr()) {
+      return JSON.parse(localStorage.getItem('ul_combo_cards') || '[]');
+    }
+    return [];
+  });
+
+  const [lastLoginDate, setLastLoginDate] = useState(() => localStorage.getItem('ul_login_date'));
+  const [currentStreak, setCurrentStreak] = useState(() => parseInt(localStorage.getItem('ul_streak') || '0', 10));
+
   const [offlineEarnings, setOfflineEarnings] = useState(0);
 
   const levelIndex = getLevelIndex(coins);
@@ -36,11 +58,7 @@ function App() {
   
   const pph = upgrades.reduce((total, u) => {
     if (u.level > 0) {
-      // we need a helper to calc total pph of an upgrade based on its level
-      // Actually INITIAL_UPGRADES has pph which we recalculate.
-      // Wait, in Hamster Kombat, PPH is explicitly shown. Let's calculate total PPH.
       let uPph = 0;
-      let currentBase = u.pph;
       for (let i = 1; i <= u.level; i++) {
         uPph += Math.floor(u.pph * Math.pow(1.2, i));
       }
@@ -56,10 +74,8 @@ function App() {
       const deltaSec = (now - lastSavedTime) / 1000;
       
       if (deltaSec >= 1) {
-        // Energy recharge
         setEnergy(prev => Math.min(prev + Math.floor(RECHARGE_RATE_PER_SEC * deltaSec), maxEnergy));
         
-        // Passive income (PPH is per hour, so divide by 3600 per sec)
         if (pph > 0) {
           const earned = (pph / 3600) * deltaSec;
           setCoins(prev => prev + earned);
@@ -78,7 +94,7 @@ function App() {
     const savedTime = localStorage.getItem('ul_last_time');
     if (savedTime) {
       const deltaSec = (now - parseInt(savedTime, 10)) / 1000;
-      if (deltaSec > 60 && pph > 0) { // minimum 1 minute to show offline earnings
+      if (deltaSec > 60 && pph > 0) {
         const maxOfflineSec = 3 * 3600; // max 3 hours
         const effectiveSec = Math.min(deltaSec, maxOfflineSec);
         const earned = Math.floor((pph / 3600) * effectiveSec);
@@ -86,7 +102,7 @@ function App() {
         setCoins(prev => prev + earned);
       }
     }
-  }, []); // Run once on mount
+  }, []); 
 
   // Save to localStorage
   useEffect(() => {
@@ -94,7 +110,14 @@ function App() {
     localStorage.setItem('ul_energy', energy.toString());
     localStorage.setItem('ul_upgrades', JSON.stringify(upgrades));
     localStorage.setItem('ul_last_time', lastSavedTime.toString());
-  }, [coins, energy, upgrades, lastSavedTime]);
+    
+    if (dailyCipherSolved) localStorage.setItem('ul_cipher', getTodayStr());
+    localStorage.setItem('ul_combo_date', getTodayStr());
+    localStorage.setItem('ul_combo_cards', JSON.stringify(comboFound));
+    
+    if (lastLoginDate) localStorage.setItem('ul_login_date', lastLoginDate);
+    localStorage.setItem('ul_streak', currentStreak.toString());
+  }, [coins, energy, upgrades, lastSavedTime, dailyCipherSolved, comboFound, lastLoginDate, currentStreak]);
 
   const handleTap = (tapCount = 1) => {
     if (energy >= tapCount) {
@@ -115,6 +138,30 @@ function App() {
     }
   };
 
+  const handleCipherSolved = () => {
+    setDailyCipherSolved(true);
+    setCoins(prev => prev + 1000000);
+    alert("Cipher Solved! You earned 1,000,000 coins.");
+  };
+
+  const handleComboCardFound = (cardId) => {
+    const newCombo = [...comboFound, cardId];
+    setComboFound(newCombo);
+    if (newCombo.length === 3) {
+      setCoins(prev => prev + 5000000);
+      alert("Daily Combo Found! You earned 5,000,000 coins.");
+    }
+  };
+
+  const canClaimToday = lastLoginDate !== getTodayStr();
+  const handleClaimDailyReward = (amount) => {
+    if (canClaimToday) {
+      setCoins(prev => prev + amount);
+      setCurrentStreak(prev => prev + 1);
+      setLastLoginDate(getTodayStr());
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-game-bg text-white max-w-md mx-auto relative overflow-hidden shadow-2xl border-x border-gray-900">
       <Header coins={Math.floor(coins)} pph={pph} levelIndex={levelIndex} />
@@ -127,6 +174,8 @@ function App() {
             maxEnergy={maxEnergy} 
             onTap={handleTap} 
             levelIndex={levelIndex}
+            onCipherSolved={handleCipherSolved}
+            cipherSolved={dailyCipherSolved}
           />
         )}
         {activeTab === 'mine' && (
@@ -134,25 +183,23 @@ function App() {
             coins={Math.floor(coins)} 
             upgrades={upgrades} 
             onBuy={handleBuyUpgrade} 
+            comboFound={comboFound}
+            onComboCardFound={handleComboCardFound}
           />
         )}
         {activeTab === 'friends' && (
-          <div className="p-6 text-center text-gray-400 mt-20">
-            <h2 className="text-2xl font-bold mb-4 text-white">Friends</h2>
-            <p>Invite friends and get bonuses. (Coming Soon)</p>
-          </div>
+          <Friends coins={coins} />
         )}
         {activeTab === 'earn' && (
-          <div className="p-6 text-center text-gray-400 mt-20">
-            <h2 className="text-2xl font-bold mb-4 text-white">Earn</h2>
-            <p>Complete tasks to earn more coins. (Coming Soon)</p>
-          </div>
+          <Earn 
+            coins={coins}
+            onClaimDailyReward={handleClaimDailyReward}
+            currentStreak={currentStreak}
+            canClaimToday={canClaimToday}
+          />
         )}
         {activeTab === 'airdrop' && (
-          <div className="p-6 text-center text-gray-400 mt-20">
-            <h2 className="text-2xl font-bold mb-4 text-white">Airdrop</h2>
-            <p>Connect your TON wallet. (Coming Soon)</p>
-          </div>
+          <Airdrop />
         )}
       </div>
 

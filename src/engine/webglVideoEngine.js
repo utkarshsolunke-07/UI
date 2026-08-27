@@ -98,7 +98,7 @@ export class WebGLVideoEngine {
   // SHADER SOURCES (Dual WebGL2 #version 300 es & WebGL1 #version 100)
   // ─────────────────────────────────────────────────────────────────
 
-  _vsSource() {
+  _vsFirstPass() {
     if (this.isWebGL2) {
       return `#version 300 es
       in vec2 a_pos;
@@ -117,6 +117,31 @@ export class WebGLVideoEngine {
       gl_Position = vec4(a_pos, 0.0, 1.0);
       v_uv = vec2(a_uv.x, 1.0 - a_uv.y);
     }`;
+  }
+
+  _vsFBOPass() {
+    if (this.isWebGL2) {
+      return `#version 300 es
+      in vec2 a_pos;
+      in vec2 a_uv;
+      out vec2 v_uv;
+      void main() {
+        gl_Position = vec4(a_pos, 0.0, 1.0);
+        v_uv = a_uv;
+      }`;
+    }
+    return `
+    attribute vec2 a_pos;
+    attribute vec2 a_uv;
+    varying vec2 v_uv;
+    void main() {
+      gl_Position = vec4(a_pos, 0.0, 1.0);
+      v_uv = a_uv;
+    }`;
+  }
+
+  _vsSource() {
+    return this._vsFirstPass();
   }
 
   // PASS 1: EASU — Bilateral Deblock + 6-tap Lanczos + Neural Sub-Pixel Tensor Synthesis
@@ -856,7 +881,8 @@ export class WebGLVideoEngine {
 
   _initPrograms() {
     const gl = this.gl;
-    const vs = this._compileShader(gl.VERTEX_SHADER, this._vsSource());
+    const vsFirst = this._compileShader(gl.VERTEX_SHADER, this._vsFirstPass());
+    const vsFBO   = this._compileShader(gl.VERTEX_SHADER, this._vsFBOPass());
 
     const fsEASU    = this._compileShader(gl.FRAGMENT_SHADER, this._fsEASU());
     const fsAnime4K = this._compileShader(gl.FRAGMENT_SHADER, this._fsAnime4K());
@@ -866,13 +892,14 @@ export class WebGLVideoEngine {
     const fsSubPix  = this._compileShader(gl.FRAGMENT_SHADER, this._fsSubPixel());
     const fsTAA     = this._compileShader(gl.FRAGMENT_SHADER, this._fsTAA());
 
-    this.progEASU    = this._linkProgram(vs, fsEASU);
-    this.progAnime4K = this._linkProgram(vs, fsAnime4K);
-    this.progRCAS    = this._linkProgram(vs, fsRCAS);
-    this.progDeband  = this._linkProgram(vs, fsDeband);
-    this.progColor   = this._linkProgram(vs, fsColor);
-    this.progSubPix  = this._linkProgram(vs, fsSubPix);
-    this.progTAA     = this._linkProgram(vs, fsTAA);
+    this.progEASU    = this._linkProgram(vsFirst, fsEASU);
+    this.progAnime4K = this._linkProgram(vsFBO,   fsAnime4K);
+    this.progRCAS    = this._linkProgram(vsFBO,   fsRCAS);
+    this.progDeband  = this._linkProgram(vsFBO,   fsDeband);
+    this.progColor   = this._linkProgram(vsFBO,   fsColor);
+    this.progSubPix  = this._linkProgram(vsFBO,   fsSubPix);
+    this.progTAA     = this._linkProgram(vsFBO,   fsTAA);
+    this.progBlit    = this._linkProgram(vsFBO,   fsEASU);
 
     this.locEASU = {
       src:     gl.getUniformLocation(this.progEASU, 'u_src'),
@@ -1278,8 +1305,8 @@ export class WebGLVideoEngine {
       // WebGL 1 Fallback: Draw final processed colorTex to default framebuffer (canvas null)
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, dstW, dstH);
-      gl.useProgram(this.progEASU); // Use basic passthrough shader to blit to canvas
-      this._bindAttributes(this.progEASU);
+      gl.useProgram(this.progBlit); // Use FBO passthrough shader to blit to canvas without Y-flip
+      this._bindAttributes(this.progBlit);
       
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, finalTex);

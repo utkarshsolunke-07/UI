@@ -1,19 +1,57 @@
 import React, { useState } from 'react';
-import { formatCoins, calculateUpgradeCost, calculateUpgradePph } from '../utils/gameLogic';
-import { TrendingUp, Lock } from 'lucide-react';
+import { formatCoins, calculateUpgradeCost, calculateUpgradePph, getDailyComboCards } from '../utils/gameLogic';
+import { TrendingUp, Lock, HelpCircle } from 'lucide-react';
 
-export default function Mine({ coins, upgrades, onBuy }) {
+export default function Mine({ coins, upgrades, onBuy, comboFound, onComboCardFound }) {
   const [activeCategory, setActiveCategory] = useState('PR & Team');
   const categories = ['PR & Team', 'Markets', 'Legal'];
+
+  const targetComboCards = getDailyComboCards();
 
   const handleBuy = (upgrade) => {
     const cost = calculateUpgradeCost(upgrade.cost, upgrade.level);
     const addedPph = calculateUpgradePph(upgrade.pph, upgrade.level) - (upgrade.level > 0 ? calculateUpgradePph(upgrade.pph, upgrade.level - 1) : 0);
     onBuy(upgrade.id, cost, addedPph);
+    
+    // Check if combo card found
+    if (targetComboCards.includes(upgrade.id) && !comboFound.includes(upgrade.id)) {
+      onComboCardFound(upgrade.id);
+    }
   };
 
   return (
     <div className="flex flex-col h-full px-4 pt-4 pb-24">
+      {/* Daily Combo UI */}
+      <div className="mb-4 bg-card-bg p-3 rounded-2xl border border-gray-800 shadow-md">
+        <div className="flex justify-between items-center mb-3">
+          <span className="font-bold text-sm">Daily Combo</span>
+          <div className="flex items-center gap-1 font-bold text-accent-gold text-xs bg-gray-800 px-2 py-1 rounded-full border border-gray-700">
+            <span>₹</span>
+            <span>+5,000,000</span>
+          </div>
+        </div>
+        <div className="flex justify-between gap-2">
+          {[0, 1, 2].map((index) => {
+            const foundCardId = comboFound[index];
+            const foundCard = foundCardId ? upgrades.find(u => u.id === foundCardId) : null;
+            
+            return (
+              <div key={index} className="flex-1 aspect-square bg-gray-800 rounded-xl border border-gray-700 flex flex-col items-center justify-center relative overflow-hidden">
+                {foundCard ? (
+                  <>
+                    <TrendingUp className="w-5 h-5 text-accent-gold mb-1" />
+                    <span className="text-[9px] font-bold text-center leading-tight px-1">{foundCard.name}</span>
+                    <div className="absolute inset-0 bg-green-500/20" />
+                  </>
+                ) : (
+                  <HelpCircle className="w-6 h-6 text-gray-600" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Categories */}
       <div className="flex gap-2 mb-6 bg-card-bg p-1 rounded-xl border border-gray-800">
         {categories.map((cat) => (
@@ -37,7 +75,6 @@ export default function Mine({ coins, upgrades, onBuy }) {
           .filter((u) => u.category === activeCategory)
           .map((u) => {
             const cost = calculateUpgradeCost(u.cost, u.level);
-            // new pph it gives - old pph
             const currentPph = u.level > 0 ? calculateUpgradePph(u.pph, u.level - 1) : 0;
             const nextPph = calculateUpgradePph(u.pph, u.level);
             const pphIncrease = nextPph - currentPph;
