@@ -1,0 +1,402 @@
+{
+  "timestamp": "2026-08-29T04:34:58.249Z",
+  "total": 98,
+  "passed": 98,
+  "failed": 0,
+  "warnings": 0,
+  "passRate": 100,
+  "results": [
+    {
+      "name": "ICO object is defined",
+      "status": "PASS"
+    },
+    {
+      "name": "ICO.sparkles is defined (Bug1 fix)",
+      "status": "PASS"
+    },
+    {
+      "name": "ICO.sparkles is a non-empty path string",
+      "status": "PASS"
+    },
+    {
+      "name": "ICO.play is defined",
+      "status": "PASS"
+    },
+    {
+      "name": "ICO.pause is defined",
+      "status": "PASS"
+    },
+    {
+      "name": "ICO.download is defined",
+      "status": "PASS"
+    },
+    {
+      "name": "ICO.upload is defined",
+      "status": "PASS"
+    },
+    {
+      "name": "ICO.camera is defined",
+      "status": "PASS"
+    },
+    {
+      "name": "ICO.flame is defined",
+      "status": "PASS"
+    },
+    {
+      "name": "ICO.wand is defined",
+      "status": "PASS"
+    },
+    {
+      "name": "ICO.mute is defined",
+      "status": "PASS"
+    },
+    {
+      "name": "ICO.loop is defined",
+      "status": "PASS"
+    },
+    {
+      "name": "WebGL2 context requested (not WebGL1)",
+      "status": "PASS"
+    },
+    {
+      "name": "Four shader programs present (EASU, RCAS, Color, TAA)",
+      "status": "PASS"
+    },
+    {
+      "name": "TAA Temporal Anti-Aliasing shader present (_fsTAA)",
+      "status": "PASS"
+    },
+    {
+      "name": "TAA history clamping present to prevent ghosting",
+      "status": "PASS"
+    },
+    {
+      "name": "Static detectBackend() method present for hardware auto-detection",
+      "status": "PASS"
+    },
+    {
+      "name": "EASU pass uses srcSize and dstSize separately (Bug2 v30 fix)",
+      "status": "PASS"
+    },
+    {
+      "name": "GLSL variable shadowing fixed (wt not w)",
+      "status": "PASS"
+    },
+    {
+      "name": "RCAS pass uses u_dstSize for pixel offset",
+      "status": "PASS"
+    },
+    {
+      "name": "Color pass includes ACES tonemapper",
+      "status": "PASS"
+    },
+    {
+      "name": "Film grain uses time uniform for animation",
+      "status": "PASS"
+    },
+    {
+      "name": "All 6 LUT modes present in Color shader",
+      "status": "PASS"
+    },
+    {
+      "name": "FBO completeness check present (Bug5 fix)",
+      "status": "PASS"
+    },
+    {
+      "name": "FBO fallback to RGBA8 on incompleteness",
+      "status": "PASS"
+    },
+    {
+      "name": "texSubImage2D used for subsequent frames (perf optimization)",
+      "status": "PASS"
+    },
+    {
+      "name": "EXT_color_buffer_float extension checked",
+      "status": "PASS"
+    },
+    {
+      "name": "VAO (Vertex Array Objects) used for reduced draw overhead",
+      "status": "PASS"
+    },
+    {
+      "name": "Framebuffers bound to EASU and RCAS textures",
+      "status": "PASS"
+    },
+    {
+      "name": "destroy() method cleans up all GPU resources",
+      "status": "PASS"
+    },
+    {
+      "name": "Worker imports mp4-muxer",
+      "status": "PASS"
+    },
+    {
+      "name": "Worker imports OmniUpscalerCore",
+      "status": "PASS"
+    },
+    {
+      "name": "Muxer audio config in constructor (not mutated after)",
+      "status": "PASS"
+    },
+    {
+      "name": "Audio muxer config uses \"aac\" (mp4-muxer codec) and encoder uses \"mp4a.40.2\" (WebCodecs codec)",
+      "status": "PASS"
+    },
+    {
+      "name": "AudioData correct f32-planar format present in worker",
+      "status": "PASS"
+    },
+    {
+      "name": "AudioData buffer size is framesInChunk (Bug3 fix)",
+      "status": "PASS"
+    },
+    {
+      "name": "bitrateMode handled safely with isConfigSupported (Bug6 fix)",
+      "status": "PASS"
+    },
+    {
+      "name": "latencyMode handled safely (Bug6 fix)",
+      "status": "PASS"
+    },
+    {
+      "name": "VideoEncoder error handler posts ERROR message",
+      "status": "PASS"
+    },
+    {
+      "name": "Keyframe every fps/2 (every 0.5s for quality)",
+      "status": "PASS"
+    },
+    {
+      "name": "Worker handles INIT, PROCESS_FRAME, FINALIZE messages",
+      "status": "PASS"
+    },
+    {
+      "name": "videoEncoder.flush() awaited before muxer.finalize()",
+      "status": "PASS"
+    },
+    {
+      "name": "bitmap.close() called to prevent memory leak",
+      "status": "PASS"
+    },
+    {
+      "name": "gl.finish() called before VideoFrame capture",
+      "status": "PASS"
+    },
+    {
+      "name": "frame.close() called after encode",
+      "status": "PASS"
+    },
+    {
+      "name": "OffscreenCanvas used (worker-compatible)",
+      "status": "PASS"
+    },
+    {
+      "name": "requestAnimationFrame removed from export loop (Bug2 fix)",
+      "status": "PASS"
+    },
+    {
+      "name": "createImageBitmap called directly after seeked",
+      "status": "PASS"
+    },
+    {
+      "name": "createImageBitmap has fallback without resize options",
+      "status": "PASS"
+    },
+    {
+      "name": "seeked listener added BEFORE setting currentTime",
+      "status": "PASS"
+    },
+    {
+      "name": "1.5s timeout on seek prevents infinite hang",
+      "status": "PASS"
+    },
+    {
+      "name": "Worker terminated after export",
+      "status": "PASS"
+    },
+    {
+      "name": "Blob created with video/mp4 MIME type",
+      "status": "PASS"
+    },
+    {
+      "name": "Codec probe iterates candidates in quality order",
+      "status": "PASS"
+    },
+    {
+      "name": "Progress reported during frame loop",
+      "status": "PASS"
+    },
+    {
+      "name": "Audio extraction wrapped in try-catch (silent fallback)",
+      "status": "PASS"
+    },
+    {
+      "name": "4K (3840) target resolution used for scale=4",
+      "status": "PASS"
+    },
+    {
+      "name": "isVideo instanceof check before seeking",
+      "status": "PASS"
+    },
+    {
+      "name": "Export resolves with {blob, videoUrl}",
+      "status": "PASS"
+    },
+    {
+      "name": "Uses requestAnimationFrame for UI (valid in main thread)",
+      "status": "PASS"
+    },
+    {
+      "name": "60fps cap with delta-time throttle",
+      "status": "PASS"
+    },
+    {
+      "name": "WebGL engine reinitialized on error",
+      "status": "PASS"
+    },
+    {
+      "name": "Raw canvas draws source at srcW/srcH (correct dimensions)",
+      "status": "PASS"
+    },
+    {
+      "name": "AI canvas capped at 1920 preview width",
+      "status": "PASS"
+    },
+    {
+      "name": "Skips render if video not ready (readyState < 2)",
+      "status": "PASS"
+    },
+    {
+      "name": "Canvas width/height updated when dimensions change",
+      "status": "PASS"
+    },
+    {
+      "name": "cancelAnimationFrame called on cleanup",
+      "status": "PASS"
+    },
+    {
+      "name": "Passes sharpness, clarity, hdr, temp, grain, lut to WebGL engine",
+      "status": "PASS"
+    },
+    {
+      "name": "VideoStudio exports default function",
+      "status": "PASS"
+    },
+    {
+      "name": "All required hooks imported (useState, useRef, useEffect, useCallback)",
+      "status": "PASS"
+    },
+    {
+      "name": "exportOfflineVideo imported from offlineExportEngine",
+      "status": "PASS"
+    },
+    {
+      "name": "OmniUpscalerCore imported",
+      "status": "PASS"
+    },
+    {
+      "name": "useWebglRenderLoop hook used",
+      "status": "PASS"
+    },
+    {
+      "name": "Side-by-side dual viewport present",
+      "status": "PASS"
+    },
+    {
+      "name": "Export progress bar rendered when isExporting=true",
+      "status": "PASS"
+    },
+    {
+      "name": "Download anchor uses correct MP4 filename",
+      "status": "PASS"
+    },
+    {
+      "name": "canvasRef and rawCanvasRef used for dual-viewport",
+      "status": "PASS"
+    },
+    {
+      "name": "Sample video generator imported",
+      "status": "PASS"
+    },
+    {
+      "name": "LUT options array defined with 7 entries",
+      "status": "PASS"
+    },
+    {
+      "name": "App.jsx imports VideoStudio and ImageStudio",
+      "status": "PASS"
+    },
+    {
+      "name": "Header component used",
+      "status": "PASS"
+    },
+    {
+      "name": "Theme applied via data-theme attribute",
+      "status": "PASS"
+    },
+    {
+      "name": "App.css defines primary CSS variables",
+      "status": "PASS"
+    },
+    {
+      "name": "App.css has dark theme base",
+      "status": "PASS"
+    },
+    {
+      "name": "Header has SVG Neural Core logo",
+      "status": "PASS"
+    },
+    {
+      "name": "mp4-muxer installed in package.json",
+      "status": "PASS"
+    },
+    {
+      "name": "Vite build tool configured",
+      "status": "PASS"
+    },
+    {
+      "name": "React 19 used",
+      "status": "PASS"
+    },
+    {
+      "name": "Export completely removes recordUpscaledVideoStream fallback",
+      "status": "PASS"
+    },
+    {
+      "name": "Video duration fallback (|| 10)",
+      "status": "PASS"
+    },
+    {
+      "name": "Even dimension enforcement for codec compatibility",
+      "status": "PASS"
+    },
+    {
+      "name": "Worker onerror handler registered",
+      "status": "PASS"
+    },
+    {
+      "name": "URL.createObjectURL used for blob URLs",
+      "status": "PASS"
+    },
+    {
+      "name": "VideoEncoder.isConfigSupported called before init",
+      "status": "PASS"
+    },
+    {
+      "name": "Sample video canvas teardown called on reset",
+      "status": "PASS"
+    },
+    {
+      "name": "No infinite promise chains (resolveWorker cleared after use)",
+      "status": "PASS"
+    },
+    {
+      "name": "Audio context properly closed after use",
+      "status": "PASS"
+    },
+    {
+      "name": "Export isExporting flag set to false on both success and error",
+      "status": "PASS"
+    }
+  ]
+}
